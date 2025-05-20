@@ -45,22 +45,19 @@ preset_path = save_preset("Scalping", "My Strategy",
                          "My custom high-risk strategy")
 ```
 
-### 3. Configuration Bridge (`src/utils/config_bridge.py`)
+### 3. Preset Integration (`src/ui/preset_manager.py`)
 
-Connects the preset system with the centralized configuration:
-- Loads presets into the main configuration
-- Saves current configuration as presets
-- Synchronizes preset performance data
-- Provides suggestions based on historical performance
+The preset manager provides functions to load and save strategy presets.
+Modules can interact with it directly when the main configuration is unavailable.
 
 ```python
-from src.utils.config_bridge import load_preset_into_config, save_config_as_preset
+from src.ui.preset_manager import load_preset, save_preset
 
-# Load a preset into main config
-success = load_preset_into_config("presets/defaults/Scalping/Aggressive.json")
+# Load a preset
+preset_data = load_preset("presets/defaults/Scalping/Aggressive.json")
 
-# Save current settings as a preset
-path = save_config_as_preset("Scalping", "My Strategy", "Description")
+# Save current settings as a new preset
+path = save_preset("Scalping", "My Strategy", {"risk_tolerance": "high"})
 ```
 
 ### 4. Path Management (`src/utils/paths.py`)
@@ -97,7 +94,7 @@ preset_dir = paths["presets"]
 ### 3. From Presets to Configuration
 
 1. User selects a preset in the UI
-2. Preset is loaded via `config_bridge.load_preset_into_config()`
+2. The preset is loaded using `preset_manager.load_preset()`
 3. Main configuration is updated with preset values
 4. UI is updated to reflect loaded values
 
@@ -107,7 +104,7 @@ The system includes robust fallback mechanisms:
 
 1. **TradeConfig Fallback**: If configuration file can't be loaded, default values are used
 2. **Preset-Based Fallback in backtesting.py**: If trade_config can't be imported, the system attempts to:
-   - Load a default preset from the preset system via config_bridge
+   - Load a default preset from the preset system via `preset_manager`
    - If preset loading fails, a minimal but functional configuration is used
    - All fallbacks maintain the same interface as TradeConfig
 3. **Path Fallback**: If paths.py can't be used, direct path determination is available
@@ -151,15 +148,14 @@ def save_user_preferences(params):
 ### Working with Presets
 
 ```python
-from src.utils.config_bridge import load_preset_into_config, save_config_as_preset
+from src.ui.preset_manager import load_preset, save_preset
 
 # Load a preset
 preset_path = "presets/defaults/Scalping/Aggressive.json"
-success = load_preset_into_config(preset_path)
+preset_data = load_preset(preset_path)
 
 # After training/backtesting, save the current configuration
-preset_path = save_config_as_preset("Scalping", "My Optimized Strategy", 
-                                  "Optimized through backtesting")
+preset_path = save_preset("Scalping", "My Optimized Strategy", preset_data["params"])
 ```
 
 ## Error Handling

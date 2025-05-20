@@ -34,13 +34,21 @@ except ImportError:
         logger.error(f"Error in {context}: {str(error)}")
         return {"message": str(error), "handled": False}
 
-# Try to import config bridge for config management
-try:
-    from src.utils.config_bridge import load_preset_into_config, get_preset_default_config
-    config_bridge_available = True
-except ImportError:
-    config_bridge_available = False
-    logger.warning("Config bridge not available - some recovery features will be limited")
+
+def _get_preset_default_config(bucket: str) -> Dict[str, Any]:
+    """Load default parameters for a bucket from the preset system."""
+    try:
+        from src.ui import preset_manager
+    except Exception as e:
+        logger.warning(f"Preset manager unavailable: {e}")
+        return {}
+
+    bucket_presets = preset_manager.DEFAULT_PRESETS.get(bucket, {})
+    for _name, data in bucket_presets.items():
+        params = data.get("params")
+        if params:
+            return params
+    return {}
 
 # Try to import trade_config for default configurations
 try:
@@ -322,13 +330,13 @@ class TrainingRecoverySystem:
         # Try to get bucket-specific defaults from preset system
         bucket = repaired_config.get("BUCKET", "Scalping")
         preset_defaults = {}
-        
-        if config_bridge_available:
-            try:
-                preset_defaults = get_preset_default_config(bucket)
+
+        try:
+            preset_defaults = _get_preset_default_config(bucket)
+            if preset_defaults:
                 logger.info(f"Found preset defaults for bucket {bucket}")
-            except Exception as e:
-                logger.warning(f"Could not get preset defaults: {e}")
+        except Exception as e:
+            logger.warning(f"Could not get preset defaults: {e}")
         
         # If we have preset defaults, prefer them over our hardcoded defaults
         if preset_defaults:
@@ -457,13 +465,13 @@ class TrainingRecoverySystem:
             recovered_config["GRADIENT_CLIP_VALUE"] = 1.0
             logger.info(f"Added gradient clipping to handle NaN values")
             
-        # Check for preset recovery
-        if config_bridge_available and self.retry_count == self.max_retries - 1:
+        # Check for preset recovery on the last retry attempt
+        if self.retry_count == self.max_retries - 1:
             # Last attempt - try to load a preset as a last resort
             bucket = recovered_config.get("BUCKET", "Scalping")
             try:
                 # Attempt to get a preset config
-                preset_config = get_preset_default_config(bucket)
+                preset_config = _get_preset_default_config(bucket)
                 if preset_config:
                     logger.info(f"Using preset defaults for {bucket} as last recovery attempt")
                     # Keep some original settings but use preset for most

@@ -13,7 +13,7 @@ The Training Recovery System provides robust error handling and automatic recove
 - **Detailed Error Reports**: Generates comprehensive error reports for debugging
 - **Performance History Tracking**: Maintains a history of training performance metrics
 - **Recovery State Management**: Manages recovery state for resuming interrupted training
-- **Integration with Existing Systems**: Works with the BTC AI error handling system and config bridge
+- **Integration with Existing Systems**: Works with the BTC AI error handling system and preset manager
 
 ## How to Use
 
@@ -157,4 +157,4 @@ This creates a backup named `BTC_AI_YYYY-MM-DD_v1.4_post_training_stable.zip` in
 - Pandas
 - NumPy
 - Access to BTC AI's error handling framework (optional)
-- Access to BTC AI's config bridge (optional) 
+- Access to BTC AI's preset manager (optional)

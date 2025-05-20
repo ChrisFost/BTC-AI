@@ -22,13 +22,12 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Import with fallback handling to simulate how backtesting would handle this
+# Import environment and preset manager directly
 try:
-    from src.utils.config_bridge import get_preset_default_config
     from src.environment.env_base import create_environment
+    from src.ui import preset_manager
 except ImportError as e:
     logger.error(f"Import error: {e}")
-    logger.error("Cannot run test without these modules")
     raise
 
 
@@ -81,7 +80,12 @@ class TestEnvironmentConfigIntegration(unittest.TestCase):
     def test_create_environment_with_preset_config(self):
         """Test environment creation using a preset-based configuration"""
         # Get a preset config
-        preset_config = get_preset_default_config("Scalping")
+        bucket_presets = preset_manager.DEFAULT_PRESETS.get("Scalping", {})
+        preset_config = {}
+        for data in bucket_presets.values():
+            if "params" in data:
+                preset_config = data["params"]
+                break
         
         # Ensure we have a valid preset (or create a minimal one)
         if not preset_config:
@@ -142,9 +146,8 @@ class TestEnvironmentConfigIntegration(unittest.TestCase):
             "BUCKET": "Scalping"
         }
         
-        # Patch the get_preset_default_config to simulate failure
-        with patch('src.utils.config_bridge.get_preset_default_config', 
-                  side_effect=Exception("Preset system unavailable")):
+        # Patch DEFAULT_PRESETS to simulate preset system failure
+        with patch.object(preset_manager, 'DEFAULT_PRESETS', {}):
             
             # Create environment with minimal config
             env = create_environment(self.test_df, minimal_config)
@@ -156,7 +159,12 @@ class TestEnvironmentConfigIntegration(unittest.TestCase):
     def test_essential_parameters_provided(self):
         """Test that essential parameters are always provided to the environment"""
         # Get a preset config
-        preset_config = get_preset_default_config("Scalping")
+        bucket_presets = preset_manager.DEFAULT_PRESETS.get("Scalping", {})
+        preset_config = {}
+        for data in bucket_presets.values():
+            if "params" in data:
+                preset_config = data["params"]
+                break
         
         if preset_config:
             # Create environment with preset config
