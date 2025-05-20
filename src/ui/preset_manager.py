@@ -13,8 +13,8 @@ Key features:
 
 Fallback System Role:
 This module serves as a critical component of the BTC-AI fallback system. If the main configuration 
-system (trade_config) fails to load, the backtesting and training modules will attempt to load default presets 
-from this module via config_bridge.py. This ensures that even if the main configuration is unavailable,
+system (trade_config) fails to load, the backtesting and training modules will attempt to load default presets
+directly from this module. This ensures that even if the main configuration is unavailable,
 the system can continue to function with sensible default values.
 """
 

@@ -56,12 +56,24 @@ except ImportError as e:
     logger.warning(f"Could not import trade_config: {str(e)}")
     logger.warning("Attempting to load default preset configuration instead")
     
+    def _load_default_preset(bucket: str = "Scalping") -> Dict[str, Any]:
+        """Load the default preset parameters for the given bucket."""
+        try:
+            from src.ui import preset_manager
+        except Exception as e:
+            logger.error(f"Failed to import preset_manager: {e}")
+            return {}
+
+        bucket_presets = preset_manager.DEFAULT_PRESETS.get(bucket, {})
+        for _name, data in bucket_presets.items():
+            params = data.get("params")
+            if params:
+                return params
+        return {}
+
     try:
-        # Try to use config_bridge to get default preset
-        from src.utils.config_bridge import get_preset_default_config
-        
         # Get default config for Scalping (most conservative)
-        preset_config = get_preset_default_config("Scalping")
+        preset_config = _load_default_preset("Scalping")
         
         # Create a TradeConfig-like interface with preset data
         class PresetBasedConfig:
