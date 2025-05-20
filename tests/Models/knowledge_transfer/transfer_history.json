@@ -1,0 +1,68 @@
+[
+  {
+    "episode": 0,
+    "source": "Scalping",
+    "target": "Short",
+    "transfer_types": [
+      "weights",
+      "features",
+      "horizons"
+    ],
+    "success": true,
+    "timestamp": "2025-03-23 20:41:35",
+    "duration": 13.907414758594848,
+    "metrics_before": {
+      "reward": 0.1305551653695884,
+      "win_rate": 0.40970909107481646,
+      "profit_factor": 1.1287221363813094
+    },
+    "metrics_after": {
+      "reward": 0.15324857956594592,
+      "win_rate": 0.4453174029997148,
+      "profit_factor": 1.2660601820778583
+    }
+  },
+  {
+    "episode": 0,
+    "source": "Short",
+    "target": "Medium",
+    "transfer_types": [
+      "weights"
+    ],
+    "success": true,
+    "timestamp": "2025-03-23 20:41:41",
+    "duration": 18.201963226854964,
+    "metrics_before": {
+      "reward": 0.2562924077557542,
+      "win_rate": 0.3762101476657534,
+      "profit_factor": 1.0427154012926256
+    },
+    "metrics_after": {
+      "reward": 0.3231479749878345,
+      "win_rate": 0.4252785985045862,
+      "profit_factor": 1.2331148405808765
+    }
+  },
+  {
+    "episode": 0,
+    "source": "Medium",
+    "target": "Long",
+    "transfer_types": [
+      "weights",
+      "features"
+    ],
+    "success": true,
+    "timestamp": "2025-03-23 20:41:47",
+    "duration": 19.20716710708597,
+    "metrics_before": {
+      "reward": -0.031598568133165895,
+      "win_rate": 0.39454700332897985,
+      "profit_factor": 0.7966294860657956
+    },
+    "metrics_after": {
+      "reward": -0.03815391207903614,
+      "win_rate": 0.4354727708943651,
+      "profit_factor": 0.9123159367809895
+    }
+  }
+]

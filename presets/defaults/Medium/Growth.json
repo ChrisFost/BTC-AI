@@ -1,0 +1,10 @@
+{
+    "description": "Settings optimized for consistent medium-term growth",
+    "params": {
+        "BUCKET": "Medium",
+        "min_gain_per_holding_medium": 30.0,
+        "max_gain_per_holding_medium": 60.0,
+        "bonus_multiplier_medium": 1.2,
+        "use_advanced_features": true
+    }
+}

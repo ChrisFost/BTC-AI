@@ -1,0 +1,10 @@
+{
+    "description": "Higher risk, higher reward settings for quick trades",
+    "params": {
+        "BUCKET": "Scalping",
+        "monthly_target_min": 25.0,
+        "monthly_target_max": 40.0,
+        "use_advanced_features": true,
+        "risk_tolerance": "high"
+    }
+}

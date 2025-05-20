@@ -1,0 +1,10 @@
+{
+    "description": "Balanced approach for short-term trading",
+    "params": {
+        "BUCKET": "Short",
+        "yearly_target_min": 120.0,
+        "yearly_target_max": 180.0,
+        "use_advanced_features": true,
+        "risk_tolerance": "medium"
+    }
+}

@@ -1,0 +1,66 @@
+{
+    "version": "2.0",
+    "environment": "development",
+    "trading": {
+        "bucket": "Scalping",
+        "initial_capital": 100000.0,
+        "max_positions": 50,
+        "window_size": 288,
+        "look_back_amount": 1,
+        "look_back_unit": "day(s)",
+        "resume_checkpoint": false,
+        "checkpoint_interval": 10
+    },
+    "model": {
+        "type": "ActorCritic",
+        "hidden_size": 512,
+        "num_layers": 2,
+        "kernel_size": 3,
+        "activation": "LeakyReLU",
+        "dropout": 0.1,
+        "use_fusion": true,
+        "use_rnn": false,
+        "rnn_type": "LSTM",
+        "rnn_layers": 1,
+        "rnn_hidden_size": 128,
+        "attention_heads": 4,
+        "learning_rate": 0.0005,
+        "batch_size": 32,
+        "buffer_size": 2048,
+        "gamma": 0.99,
+        "lambda": 0.95,
+        "epsilon": 0.1,
+        "eps_clip": 0.2,
+        "entropy_coef": 0.01,
+        "value_coef": 0.5,
+        "max_grad_norm": 0.5,
+        "weight_decay": 1e-05,
+        "max_steps_per_episode": 500
+    },
+    "risk": {
+        "max_btc_per_position": 10.0,
+        "max_usd_per_position": 1000000.0,
+        "max_volume_percentage": 0.05,
+        "stop_loss": 0.05,
+        "take_profit": 0.1,
+        "trailing_stop": 0.02,
+        "use_dynamic_sl": false,
+        "max_drawdown": 0.15,
+        "risk_management": true
+    },
+    "_migration_metadata": {
+        "original_version": "1.0",
+        "migration_date": "2025-03-30T20:58:52.570130",
+        "migrated_parameters": [
+            "BUCKET",
+            "INITIAL_CAPITAL",
+            "MAX_POSITIONS",
+            "HIDDEN_SIZE",
+            "LEARNING_RATE",
+            "BATCH_SIZE",
+            "MAX_BTC_PER_POSITION",
+            "MAX_USD_PER_POSITION",
+            "MAX_VOLUME_PERCENTAGE"
+        ]
+    }
+}

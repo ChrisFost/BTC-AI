@@ -1,0 +1,680 @@
+{
+    "C:\\Users\\chris\\OneDrive\\Desktop\\AI_Version_5\\src\\ui\\..\\..\\presets\\user\\Scalping\\High_Profit_Preset.json": [
+        {
+            "timestamp": "2025-04-01T00:55:16.370134",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T00:56:03.077388",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:04:50.102112",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:55:00.002203",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:06:28.692811",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:16:04.176108",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:30:45.925375",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:36:10.016644",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:38:24.083618",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.481225",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.038252",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.138319",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.884709",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.260245",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.269790",
+            "metrics": {
+                "net_profit": 2000.0,
+                "win_rate": 0.6,
+                "max_drawdown": 0.2,
+                "sharpe_ratio": 1.2,
+                "total_trades": 50
+            }
+        }
+    ],
+    "C:\\Users\\chris\\OneDrive\\Desktop\\AI_Version_5\\src\\ui\\..\\..\\presets\\user\\Scalping\\Low_Risk_Preset.json": [
+        {
+            "timestamp": "2025-04-01T00:55:16.378996",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T00:56:03.087680",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:04:50.112694",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:55:00.018063",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:06:28.708227",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:16:04.188268",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:30:45.941595",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:36:10.031278",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:38:24.097452",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.495990",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.055900",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.154285",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.900306",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.271526",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.285467",
+            "metrics": {
+                "net_profit": 800.0,
+                "win_rate": 0.7,
+                "max_drawdown": 0.05,
+                "sharpe_ratio": 1.8,
+                "total_trades": 40
+            }
+        }
+    ],
+    "C:\\Users\\chris\\OneDrive\\Desktop\\AI_Version_5\\src\\ui\\..\\..\\presets\\user\\Scalping\\Balanced_Preset.json": [
+        {
+            "timestamp": "2025-04-01T00:55:16.386984",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T00:56:03.098149",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:04:50.124806",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T01:55:00.029559",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:06:28.721251",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:16:04.198884",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:30:45.952722",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:36:10.047075",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:38:24.109543",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.508732",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.067761",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.167319",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.914041",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.284134",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.297310",
+            "metrics": {
+                "net_profit": 1500.0,
+                "win_rate": 0.65,
+                "max_drawdown": 0.1,
+                "sharpe_ratio": 1.5,
+                "total_trades": 45
+            }
+        }
+    ],
+    "C:\\Users\\chris\\OneDrive\\Desktop\\AI_Version_5\\src\\ui\\..\\..\\presets\\user\\Scalping\\Performance_Test_Preset.json": [
+        {
+            "timestamp": "2025-04-01T02:38:24.144015",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:38:24.153579",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.537859",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.549047",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:42:56.560765",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.095023",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.105389",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T02:59:43.117323",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.190063",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.200727",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:03:25.209030",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.943042",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.956128",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:04:22.969017",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.319882",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.331401",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:17:23.341825",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.327502",
+            "metrics": {
+                "net_profit": 1200.5,
+                "win_rate": 0.65,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.339540",
+            "metrics": {
+                "net_profit": 1300.5,
+                "win_rate": 0.7000000000000001,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        },
+        {
+            "timestamp": "2025-04-01T03:18:39.352181",
+            "metrics": {
+                "net_profit": 1400.5,
+                "win_rate": 0.75,
+                "max_drawdown": 0.12,
+                "sharpe_ratio": 1.35,
+                "total_trades": 45,
+                "profit_factor": 1.8
+            }
+        }
+    ]
+}

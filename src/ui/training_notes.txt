@@ -1,0 +1,6 @@
+Use this area to keep notes about your training sessions.
+
+Tips:
+- Document successful configurations
+- Track experiment outcomes
+- Note interesting observations

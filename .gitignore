@@ -1,0 +1,74 @@
+# Python bytecode and cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging / build
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+BTC-AI.exe
+*.pyz
+*.pkg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+.ENV/
+
+# Development environment
+.idea/
+.vscode/
+.cursor/
+Cache/
+
+# Logs and temporary files
+*.log
+logs/
+temp_fixes/
+throw_away/
+
+# Compiled extensions
+*.so
+*.dll
+*.pyd
+
+# Model checkpoints & TensorFlow/PyTorch files
+emergency_checkpoints/
+*.pth
+*.pt
+
+# Compiled Python files
+*.pyc
+*.spec
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# Testing outputs
+test_run.log
+*test_*.log
+e2e_test_run_*.log
+performance_test_*.log
+stress_test_*.log
+gui_usability_test.log
+menu_test.log
+setup_wizard_test.log
+
+# Application state files and backups
+app_state.emergency.*.json
+*.backup
+app_state.emergency.json
+
+# Keep all .py, .md, .csv, .txt, and .bak files (as requested)
+# These are excluded from gitignore by default
+
+# Generated documentation
+/docs/_build/
+/docs/generated/ 

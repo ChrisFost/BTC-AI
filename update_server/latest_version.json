@@ -1,0 +1,11 @@
+{
+  "latest_version": "0.2.0",
+  "min_required_version": "0.1.0",
+  "release_date": "2025-04-15T10:00:00",
+  "download_url": "https://btc-ai-updates.example.com/downloads/btc-ai-0.2.0.zip",
+  "changelog": "- Improved market prediction accuracy\n- Added support for multiple cryptocurrencies\n- Fixed several UI bugs\n- Enhanced logging for better diagnostics",
+  "checksum": "0123456789abcdef0123456789abcdef",
+  "size_bytes": 1850000,
+  "required": false,
+  "auto_update": false
+} 

@@ -1,0 +1,416 @@
+"""
+Bucket Manager for RL Trader Parameter Tuner
+
+This module handles the trading bucket functionality, including bucket changes,
+preset loading for bucket types, and updating UI based on bucket selection.
+"""
+
+import PySimpleGUI as sg
+import logging
+import os
+import sys
+
+# Make sure we can import from parent directory
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Setup logger
+logger = logging.getLogger(__name__)
+
+# Import dependencies with fallbacks
+try:
+    from src.utils.bucket_goals import create_goal_provider
+    bucket_goals_available = True
+    logger.info("Bucket goals system initialized successfully")
+except ImportError as e:
+    bucket_goals_available = False
+    logger.warning(f"Bucket goals system not available: {str(e)}. Some features will be disabled.")
+    
+    # Provide a stub implementation
+    def create_goal_provider(*args, **kwargs):
+        logger.warning("Using stub goal provider - bucket goals not available")
+        return None
+
+# Try to import preset handlers and specific functions
+try:
+    from src.ui.preset_handlers import (
+        handle_preset_tab_events, 
+        initialize_preset_handlers,
+        refresh_preset_list,
+        update_suggestion_list
+    )
+    preset_system_available = True
+except ImportError as e:
+    preset_system_available = False
+    logger.warning(f"Preset system functions not available: {str(e)}. Some features will be disabled.")
+    # Define stubs if import fails
+    def refresh_preset_list(window, bucket):
+        logger.warning("Stub refresh_preset_list called")
+        pass
+    def update_suggestion_list(window, bucket, filter_type):
+        logger.warning("Stub update_suggestion_list called")
+        pass
+
+# Try to import advanced exception logger
+try:
+    from src.utils.log_manager import log_exception
+    log_exception_available = True
+except ImportError:
+    log_exception_available = False
+    # Define a dummy function so calls don't break if import fails
+    def log_exception(logger=None, level=logging.ERROR):
+        pass 
+
+# Define presets for different buckets
+presets = {
+    "Scalping": {
+        "WINDOW_SIZE": 144,  # 12 hours in 5-min bars
+        "LOOK_BACK_AMOUNT": 6,
+        "LOOK_BACK_UNIT": "hour(s)",
+        "LEARNING_RATE": 0.0005,
+        "PPO_EPOCHS": 3,
+        "BATCH_SIZE": 64,
+        "monthly_target_min": 15.0,
+        "monthly_target_max": 30.0,
+        "priority_net_profit": 4.0,
+        "priority_win_rate": 3.0,
+        "MAX_POSITION_HOLDINGS": 25
+    },
+    "Short": {
+        "WINDOW_SIZE": 288,  # 1 day in 5-min bars
+        "LOOK_BACK_AMOUNT": 1,
+        "LOOK_BACK_UNIT": "day(s)",
+        "LEARNING_RATE": 0.0003,
+        "PPO_EPOCHS": 4,
+        "BATCH_SIZE": 128,
+        "yearly_target_min": 100.0,
+        "yearly_target_max": 200.0,
+        "priority_win_rate": 4.0,
+        "priority_max_drawdown": 3.0,
+        "MAX_POSITION_HOLDINGS": 15
+    },
+    "Medium": {
+        "WINDOW_SIZE": 1440,  # 5 days in 5-min bars
+        "LOOK_BACK_AMOUNT": 5,
+        "LOOK_BACK_UNIT": "day(s)",
+        "LEARNING_RATE": 0.0002,
+        "PPO_EPOCHS": 6,
+        "BATCH_SIZE": 192,
+        "min_gain_per_holding": 25.0,
+        "max_gain_per_holding": 50.0,
+        "bonus_multiplier": 1.2,
+        "priority_net_profit": 5.0,
+        "MAX_POSITION_HOLDINGS": 8
+    },
+    "Long": {
+        "WINDOW_SIZE": 4032,  # 2 weeks in 5-min bars
+        "LOOK_BACK_AMOUNT": 2,
+        "LOOK_BACK_UNIT": "week(s)",
+        "LEARNING_RATE": 0.0001,
+        "PPO_EPOCHS": 8,
+        "BATCH_SIZE": 256,
+        "min_gain_per_holding": 50.0,
+        "max_gain_per_holding": 100.0,
+        "bonus_multiplier": 1.5,
+        "priority_max_drawdown": 4.0,
+        "MAX_POSITION_HOLDINGS": 4
+    }
+}
+
+class BucketManager:
+    """
+    Class for managing bucket operations and state
+    """
+    
+    def __init__(self, app_state=None):
+        """
+        Initialize the BucketManager
+        
+        Args:
+            app_state: Optional reference to the application state
+        """
+        self.app_state = app_state
+        self.current_bucket = "Scalping"
+        self.goal_provider = None
+        
+        # Initialize goal provider if available
+        if bucket_goals_available:
+            self.goal_provider = create_goal_provider({})
+        
+        logger.info("BucketManager initialized")
+    
+    def handle_bucket_change(self, window, values):
+        """
+        Handle bucket selection changes in the UI.
+        
+        Args:
+            window: The PySimpleGUI window
+            values: The current values dictionary from the window
+        """
+        return handle_bucket_change(window, values)
+    
+    def load_preset_for_bucket(self, window, bucket):
+        """
+        Load the default preset for the specified bucket and update the UI.
+        
+        Args:
+            window: The PySimpleGUI window
+            bucket: The bucket type to load presets for
+        """
+        return load_preset_for_bucket(window, bucket)
+    
+    def update_bucket_goals(self, window, values, bucket_type=None):
+        """
+        Update the bucket goals display based on the selected bucket
+        
+        Args:
+            window: The PySimpleGUI window
+            values: The current values dictionary from the window
+            bucket_type: The specific bucket type to update (uses values["BUCKET"] if None)
+        """
+        return update_bucket_goals(window, values, bucket_type)
+    
+    def get_bucket_preset(self, bucket_type):
+        """
+        Get the default preset for a bucket type
+        
+        Args:
+            bucket_type: The bucket type to get presets for
+            
+        Returns:
+            dict: Preset values for the bucket type
+        """
+        return presets.get(bucket_type, presets["Scalping"])
+
+def update_bucket_goals(window, values, bucket_type=None):
+    """
+    Update the bucket goals display based on the selected bucket
+    
+    Args:
+        window: The PySimpleGUI window
+        values: The current values dictionary from the window
+        bucket_type: The specific bucket type to update (uses values["BUCKET"] if None)
+    """
+    try:
+        # If bucket_type not specified, use the current bucket selection
+        if bucket_type is None:
+            bucket_type = values.get("BUCKET", "Scalping")
+        
+        # Create goal provider if available
+        if bucket_goals_available:
+            # Create config dict from the values
+            config_dict = {}
+            for key in values:
+                if isinstance(key, str) and key in [
+                    "monthly_target_min", "monthly_target_max",
+                    "yearly_target_min", "yearly_target_max",
+                    "min_gain_per_holding_medium", "max_gain_per_holding_medium", "bonus_multiplier_medium",
+                    "min_gain_per_holding_long", "max_gain_per_holding_long", "bonus_multiplier_long"
+                ]:
+                    try:
+                        # Convert values to proper types
+                        config_dict[key] = float(values[key])
+                    except (ValueError, TypeError):
+                        # Use default if conversion fails
+                        config_dict[key] = presets.get(bucket_type, {}).get(key, 0.0)
+            
+            # Create goal provider with updated config
+            goal_provider = create_goal_provider(config_dict)
+            
+            # Update goal descriptions
+            if "SCALPING_DESC" in window.AllKeysDict:
+                if bucket_type == "Scalping" and hasattr(goal_provider, "get_bucket_goal_description"):
+                    desc = goal_provider.get_bucket_goal_description("Scalping")
+                    window["SCALPING_DESC"].update(desc)
+                
+            if "SHORT_DESC" in window.AllKeysDict:
+                if bucket_type == "Short" and hasattr(goal_provider, "get_bucket_goal_description"):
+                    desc = goal_provider.get_bucket_goal_description("Short")
+                    window["SHORT_DESC"].update(desc)
+                
+            if "MEDIUM_DESC" in window.AllKeysDict:
+                if bucket_type == "Medium" and hasattr(goal_provider, "get_bucket_goal_description"):
+                    desc = goal_provider.get_bucket_goal_description("Medium")
+                    window["MEDIUM_DESC"].update(desc)
+                
+            if "LONG_DESC" in window.AllKeysDict:
+                if bucket_type == "Long" and hasattr(goal_provider, "get_bucket_goal_description"):
+                    desc = goal_provider.get_bucket_goal_description("Long")
+                    window["LONG_DESC"].update(desc)
+        
+        # Log the update for debugging
+        logger.debug(f"Updated bucket goals for {bucket_type}")
+        
+    except Exception as e:
+        logger.error(f"Error updating bucket goals: {str(e)}")
+        # Don't re-raise to prevent UI disruption
+        if "-STATUS-" in window.AllKeysDict:
+            window["-STATUS-"].update(f"Error updating bucket goals: {str(e)}")
+
+
+def handle_bucket_change(window, values):
+    """
+    Handle bucket selection changes in the UI.
+    
+    Args:
+        window: The PySimpleGUI window
+        values: The current values dictionary from the window
+    """
+    try:
+        bucket = values["BUCKET"]
+        
+        # Update visibility of bucket-specific settings
+        if "SCALPING_SETTINGS" in window.AllKeysDict:
+            window["SCALPING_SETTINGS"].update(visible=(bucket == "Scalping"))
+        
+        if "SHORT_SETTINGS" in window.AllKeysDict:
+            window["SHORT_SETTINGS"].update(visible=(bucket == "Short"))
+        
+        if "MEDIUM_SETTINGS" in window.AllKeysDict:
+            window["MEDIUM_SETTINGS"].update(visible=(bucket == "Medium"))
+        
+        if "LONG_SETTINGS" in window.AllKeysDict:
+            window["LONG_SETTINGS"].update(visible=(bucket == "Long"))
+        
+        # Update look-back hint based on bucket type
+        look_back_hints = {
+            "Scalping": "(e.g., 6 hours for Scalping)",
+            "Short": "(e.g., 1 day for Short)",
+            "Medium": "(e.g., 5 days for Medium)",
+            "Long": "(e.g., 2 weeks for Long)"
+        }
+        
+        if "LOOK_BACK_HINT" in window.AllKeysDict:
+            window["LOOK_BACK_HINT"].update(look_back_hints.get(bucket, ""))
+        
+        # Update the BucketGoalProvider with current settings
+        update_bucket_goals(window, values, bucket)
+        
+        # Update preset lists for the new bucket if system is available
+        if preset_system_available:
+            try:
+                # Call the already imported function with the correct name
+                refresh_preset_list(window, bucket)
+            except Exception as e:
+                # Catch potential runtime errors even if import succeeded
+                logger.error(f"Error calling refresh_preset_list: {e}")
+        else:
+             logger.debug("Preset system not available, skipping preset list refresh.")
+             # Handle suggestion fallback if necessary (optional, depending on desired behavior)
+             if "-SUGGESTIONS-LIST-" in window.AllKeysDict:
+                 try:
+                    # Determine which filter is selected
+                    if values.get("-SUGGESTION-TYPE-PROFIT-"):
+                        filter_type = "profit"
+                    elif values.get("-SUGGESTION-TYPE-RISK-"):
+                        filter_type = "risk"
+                    else:
+                        filter_type = "overall"
+                    # Call the stub or imported function for suggestions
+                    update_suggestion_list(window, bucket, filter_type)
+                 except Exception as inner_e:
+                     logger.error(f"Error updating suggestions fallback: {str(inner_e)}")
+        
+        # Show status message
+        if "-STATUS-" in window.AllKeysDict:
+            window["-STATUS-"].update(f"Status: Switched to {bucket} bucket")
+        
+        logger.info(f"Switched to {bucket} bucket")
+    except Exception as e:
+        # Log the basic error message
+        logger.error(f"Error handling bucket change: {str(e)}")
+        # Use advanced logging if available, otherwise fallback
+        if log_exception_available:
+            log_exception(logger=logger) # Correctly call log_exception
+        else:
+            logger.error(f"Detailed exception info for bucket change:", exc_info=True) # Fallback
+
+
+def load_preset_for_bucket(window, bucket):
+    """
+    Load the default preset for the specified bucket and update the UI.
+    
+    Args:
+        window: The PySimpleGUI window
+        bucket: The bucket type to load presets for (Scalping, Short, Medium, Long)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if bucket not in presets:
+            logger.warning(f"No preset available for bucket: {bucket}")
+            return False
+        
+        # Get preset for the bucket
+        preset = presets[bucket]
+        
+        # Update UI elements with preset values
+        for key, value in preset.items():
+            if key in window.AllKeysDict:
+                # Update the UI element with the preset value
+                if isinstance(window[key], sg.Checkbox):
+                    window[key].update(value=bool(value))
+                elif isinstance(window[key], sg.Combo):
+                    window[key].update(value=str(value))
+                elif isinstance(window[key], sg.Slider):
+                    window[key].update(value=float(value))
+                else:
+                    # For text inputs
+                    window[key].update(value=str(value))
+        
+        # Log success
+        logger.info(f"Loaded preset for {bucket} bucket")
+        
+        # Show status message if available
+        if "-STATUS-" in window.AllKeysDict:
+            window["-STATUS-"].update(f"Status: Loaded preset for {bucket} bucket")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error loading preset for {bucket}: {str(e)}")
+        
+        # Try to use imported log_exception if available
+        try:
+            from src.utils.log_manager import log_exception
+            log_exception(e, f"load_preset_for_bucket: {bucket}")
+        except ImportError:
+            # If log_exception is not available, just log the error
+            logger.error(f"Exception details: {e}", exc_info=True)
+        
+        return False
+
+
+def convert_time_to_bars(amount, unit, bar_size_minutes=5):
+    """
+    Convert time units to bar counts for model configuration.
+    
+    Args:
+        amount: The time amount
+        unit: The time unit (hour(s), day(s), week(s), month(s))
+        bar_size_minutes: The size of each bar in minutes (default=5)
+    
+    Returns:
+        int: The number of bars
+    """
+    try:
+        amount = float(amount)
+        
+        # Convert all to minutes first
+        minutes = 0
+        if unit == 'hour(s)':
+            minutes = amount * 60
+        elif unit == 'day(s)':
+            minutes = amount * 24 * 60
+        elif unit == 'week(s)':
+            minutes = amount * 7 * 24 * 60
+        elif unit == 'month(s)':
+            # Approximate - using 30 days per month
+            minutes = amount * 30 * 24 * 60
+        
+        # Convert minutes to bars
+        bars = int(minutes / bar_size_minutes)
+        
+        return max(1, bars)  # Ensure at least 1 bar
+    except (ValueError, TypeError):
+        logger.error(f"Error converting time to bars: invalid input {amount} {unit}")
+        return 288  # Default to 1 day (288 5-min bars) 

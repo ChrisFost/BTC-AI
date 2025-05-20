@@ -1,0 +1,23 @@
+==================================
+BTC AI End-to-End Test Report
+==================================
+
+Test Date: 2025-03-31 20:45:38
+
+Test Results Summary:
+---------------------
+Menu Integration Test: PASSED
+Progressive Pipeline Test: FAILED
+Backtesting Integration Test: PASSED
+Cross Bucket Transfer Test: FAILED
+Overall Result: FAILED
+
+Detailed Results:
+---------------------
+See log files for detailed test output.
+
+Next Steps:
+---------------------
+The following issues need to be addressed:
+- Fix issues with the Progressive Pipeline Test.
+- Fix issues with the Cross Bucket Transfer Test.

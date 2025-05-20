@@ -1,0 +1,426 @@
+class CrossBucketKnowledgeTransfer:
+    """
+    Facilitates knowledge transfer between different bucket agents.
+    This allows short-term agents to inform longer-term agents and vice versa,
+    creating a more integrated and holistic learning system.
+    """
+    def __init__(self, config=None):
+        """
+        Initialize cross-bucket knowledge transfer system.
+
+        Args:
+            config (dict, optional): Configuration parameters
+        """
+        self.config = config or {}
+        self.bucket_agents = {}  # Maps bucket_type -> agent
+        self.feature_importance = {}  # Maps bucket_type -> feature importance
+        self.prediction_horizons = {}  # Maps bucket_type -> horizons
+        self.recent_transfers = deque(maxlen=20)  # Track recent transfers
+        self.transfer_stats = {
+            'success_rate': 0.0,
+            'transfer_count': 0,
+            'improvement_count': 0
+        }
+
+        # Transfer parameters
+        self.weight_transfer_alpha = self.config.get("WEIGHT_TRANSFER_ALPHA", 0.3)
+        self.feature_transfer_alpha = self.config.get("FEATURE_TRANSFER_ALPHA", 0.5)
+        self.transfer_cooldown = self.config.get("TRANSFER_COOLDOWN", 10)  # Episodes between transfers
+        self.last_transfer_episode = 0
+        self.enable_reverse_transfer = self.config.get("ENABLE_REVERSE_TRANSFER", True)
+
+        # Hardware awareness parameters
+        self.memory_threshold = self.config.get("MEMORY_THRESHOLD", 0.85)  # Max GPU memory usage allowed
+        self.optimize_memory_freq = self.config.get("OPTIMIZE_MEMORY_FREQ", 5)  # How often to force memory optimization
+        self.last_memory_optimization = 0
+
+        # Success tracking
+        self.pre_transfer_performance = {}
+        self.post_transfer_performance = {}
+
+        # Import memory utilities
+        self._import_memory_utils()
+
+    def _import_memory_utils(self):
+        """Import memory-related utility functions safely."""
+        try:
+            # Try to import utils module dynamically
+            utils_module = importlib.import_module("src.utils.utils")
+            self.measure_gpu_usage = utils_module.measure_gpu_usage
+            self.optimize_memory = utils_module.optimize_memory
+            log("Imported memory utilities from utils module")
+        except ImportError:
+            # Define fallback functions if imports fail
+            self.measure_gpu_usage = lambda: 0.0 if not torch.cuda.is_available() else torch.cuda.memory_allocated(0) / torch.cuda.get_device_properties(0).total_memory
+            self.optimize_memory = lambda: gc.collect() and torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            log("Using fallback memory utilities")
+
+    def _check_memory_available(self, required_headroom=0.15):
+        """
+        Check if there's enough GPU memory available for a transfer operation.
+
+        Args:
+            required_headroom (float): Required free memory as a fraction (0.0-1.0)
+
+        Returns:
+            bool: Whether enough memory is available
+        """
+        # Skip check if not using GPU
+        if not torch.cuda.is_available():
+            return True
+
+        # Check current memory usage
+        current_usage = self.measure_gpu_usage()
+
+        # If we're close to the threshold, try to optimize memory
+        if current_usage > (self.memory_threshold - required_headroom):
+            # If it's been a while since our last optimization
+            if self.last_memory_optimization == 0 or time.time() - self.last_memory_optimization > self.optimize_memory_freq:
+                log(f"[MEMORY] High GPU usage ({current_usage*100:.1f}%), optimizing memory...")
+                self.optimize_memory()
+                self.last_memory_optimization = time.time()
+
+            # Check again after optimization
+            current_usage = self.measure_gpu_usage()
+
+        # Return whether we have enough headroom
+        available = (1.0 - current_usage) >= required_headroom
+        if not available:
+            log(f"[MEMORY] Insufficient GPU memory for transfer: {current_usage*100:.1f}% used, need {required_headroom*100:.1f}% free")
+
+        return available
+
+    def register_agent(self, bucket_type, agent):
+        """
+        Register an agent for a specific bucket.
+
+        Args:
+            bucket_type (str): Bucket type identifier (e.g., 'Scalping', 'Short')
+            agent (PPOAgent): The agent to register
+        """
+        self.bucket_agents[bucket_type] = agent
+
+        # Extract feature importance if available
+        if hasattr(agent, 'feature_importance'):
+            if isinstance(agent.feature_importance, np.ndarray):
+                self.feature_importance[bucket_type] = agent.feature_importance.copy()
+            elif isinstance(agent.feature_importance, torch.Tensor):
+                self.feature_importance[bucket_type] = agent.feature_importance.cpu().numpy().copy()
+
+        # Extract prediction horizons if available
+        if hasattr(agent.model, 'horizons'):
+            self.prediction_horizons[bucket_type] = agent.model.horizons.copy()
+
+            log(f"Registered {bucket_type} agent for cross-bucket knowledge transfer")
+
+    def should_transfer(self, current_episode):
+        """
+        Determine if knowledge transfer should occur.
+
+        Args:
+            current_episode (int): Current training episode
+
+        Returns:
+            bool: Whether knowledge transfer should occur
+        """
+        # Check cooldown period
+        if current_episode - self.last_transfer_episode < self.transfer_cooldown:
+            return False
+
+        # Need at least two buckets to transfer
+        if len(self.bucket_agents) < 2:
+            return False
+
+        return True
+
+    def preprocess_transfer(self, source_bucket, target_bucket):
+        """
+        Prepare for knowledge transfer by recording pre-transfer performance.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+        """
+        # Record pre-transfer performance
+        if source_bucket in self.bucket_agents and target_bucket in self.bucket_agents:
+            source_agent = self.bucket_agents[source_bucket]
+            target_agent = self.bucket_agents[target_bucket]
+
+            # Record mean recent reward as performance metric
+            if hasattr(source_agent, 'recent_rewards') and len(source_agent.recent_rewards) > 0:
+                self.pre_transfer_performance[source_bucket] = np.mean(source_agent.recent_rewards)
+            else:
+                self.pre_transfer_performance[source_bucket] = 0.0
+
+            if hasattr(target_agent, 'recent_rewards') and len(target_agent.recent_rewards) > 0:
+                self.pre_transfer_performance[target_bucket] = np.mean(target_agent.recent_rewards)
+            else:
+                self.pre_transfer_performance[target_bucket] = 0.0
+
+    def evaluate_transfer(self, source_bucket, target_bucket):
+        """
+        Evaluate the success of a knowledge transfer.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+
+        Returns:
+            bool: Whether the transfer was successful
+        """
+        if source_bucket not in self.bucket_agents or target_bucket not in self.bucket_agents:
+            return False
+
+        source_agent = self.bucket_agents[source_bucket]
+        target_agent = self.bucket_agents[target_bucket]
+
+        # Record post-transfer performance
+        if hasattr(target_agent, 'recent_rewards') and len(target_agent.recent_rewards) > 0:
+            self.post_transfer_performance[target_bucket] = np.mean(target_agent.recent_rewards)
+        else:
+            self.post_transfer_performance[target_bucket] = 0.0
+
+        # Check if performance improved
+        pre_perf = self.pre_transfer_performance.get(target_bucket, 0.0)
+        post_perf = self.post_transfer_performance.get(target_bucket, 0.0)
+
+        success = post_perf > pre_perf
+
+        # Update statistics
+        self.transfer_stats['transfer_count'] += 1
+        if success:
+            self.transfer_stats['improvement_count'] += 1
+
+        # Log result
+        improvement = (post_perf - pre_perf) / (abs(pre_perf) + 1e-8) * 100
+        log(f"Knowledge transfer from {source_bucket} to {target_bucket}: " +
+            f"{'Success' if success else 'Failure'} ({improvement:.1f}% change)")
+
+        return success
+
+    def transfer_feature_importance(self, source_bucket, target_bucket):
+        """
+        Transfer feature importance knowledge between buckets.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+
+        Returns:
+            bool: Whether the transfer was successful
+        """
+        if (source_bucket not in self.feature_importance or
+            target_bucket not in self.feature_importance):
+            return False
+
+        # Get feature importance arrays
+        source_fi = self.feature_importance[source_bucket]
+        target_fi = self.feature_importance[target_bucket]
+
+        if source_fi.shape != target_fi.shape:
+            return False
+
+        # Create blended feature importance
+        alpha = self.feature_transfer_alpha
+        new_fi = (1 - alpha) * target_fi + alpha * source_fi
+
+        # Update target bucket's feature importance
+        self.feature_importance[target_bucket] = new_fi
+
+        # Update agent's feature importance if possible
+        if target_bucket in self.bucket_agents:
+            target_agent = self.bucket_agents[target_bucket]
+            if hasattr(target_agent, 'feature_importance'):
+                if isinstance(target_agent.feature_importance, np.ndarray):
+                    target_agent.feature_importance = new_fi.copy()
+                elif isinstance(target_agent.feature_importance, torch.Tensor):
+                    target_agent.feature_importance = torch.tensor(
+                        new_fi,
+                        device=target_agent.device,
+                        dtype=target_agent.feature_importance.dtype
+                    )
+                return True
+
+    def transfer_model_weights(self, source_bucket, target_bucket, layers=None):
+        """
+        Transfer neural network weights between bucket models.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+            layers (list, optional): Specific layers to transfer. If None, transfer compatible layers.
+
+        Returns:
+            bool: Whether the transfer was successful
+        """
+        if (source_bucket not in self.bucket_agents or
+            target_bucket not in self.bucket_agents):
+            return False
+
+        # Check for sufficient memory before proceeding
+        # Weight transfer requires more headroom than other operations
+        if not self._check_memory_available(required_headroom=0.2):
+            log(f"[MEMORY] Weight transfer from {source_bucket} to {target_bucket} aborted due to memory constraints")
+            return False
+
+        source_agent = self.bucket_agents[source_bucket]
+        target_agent = self.bucket_agents[target_bucket]
+
+        # Get models
+        source_model = source_agent.model
+        target_model = target_agent.model
+
+        try:
+            # Perform weighted averaging of compatible parameters
+            with torch.no_grad():
+                # Get state dicts
+                source_state = source_model.state_dict()
+                target_state = target_model.state_dict()
+
+                # Create new state dict for target
+                new_state = {}
+
+                # Transfer compatible layers
+                for key in target_state:
+                    if key in source_state and source_state[key].shape == target_state[key].shape:
+                        # If specific layers were specified, only transfer those
+                        if layers is not None and not any(layer in key for layer in layers):
+                            new_state[key] = target_state[key]
+                            continue
+
+                        # Perform weighted average
+                        alpha = self.weight_transfer_alpha
+                        new_state[key] = (1 - alpha) * target_state[key] + alpha * source_state[key]
+                    else:
+                        # Keep original weights for incompatible layers
+                        new_state[key] = target_state[key]
+
+                # Update target model
+                target_model.load_state_dict(new_state)
+
+                # Also update old model if PPO
+                if hasattr(target_agent, 'old_model'):
+                    target_agent.update_old_model()
+
+                # Record the transfer
+                self.recent_transfers.append({
+                    'source': source_bucket,
+                    'target': target_bucket,
+                    'timestamp': time.time(),
+                    'layers': layers
+                })
+
+                # Force memory cleanup after weight transfer
+                self.optimize_memory()
+                self.last_memory_optimization = time.time()
+
+                return True
+        except RuntimeError as e:
+            # Catch CUDA out of memory errors and other runtime errors
+            if "CUDA out of memory" in str(e):
+                log(f"[ERROR] CUDA out of memory during weight transfer: {str(e)}")
+                # Try to recover by freeing memory
+                self.optimize_memory()
+                self.last_memory_optimization = time.time()
+            else:
+                log(f"[ERROR] Runtime error during weight transfer: {str(e)}")
+            return False
+        except Exception as e:
+            log(f"[ERROR] Exception during weight transfer: {str(e)}")
+            return False
+
+    def suggest_horizon_updates(self, source_bucket, target_bucket):
+        """
+        Suggest prediction horizon updates based on source bucket.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+
+        Returns:
+            list or None: Suggested horizons or None if not applicable
+        """
+        if (source_bucket not in self.prediction_horizons or
+            target_bucket not in self.prediction_horizons):
+            return None
+
+        # Get horizons
+        source_horizons = self.prediction_horizons[source_bucket]
+        target_horizons = self.prediction_horizons[target_bucket]
+
+        # Don't modify if already the same
+        if np.array_equal(source_horizons, target_horizons):
+            return None
+
+        # Blend horizons based on bucket types
+        # For longer timeframe buckets (target), we bias toward longer horizons
+        new_horizons = list(target_horizons)  # Start with target horizons
+
+        # Get bucket types to determine direction
+        bucket_hierarchy = ["Scalping", "Short", "Medium", "Long"]
+        if bucket_hierarchy.index(target_bucket) > bucket_hierarchy.index(source_bucket):
+            # Moving to longer timeframe: selectively incorporate longer horizons
+            for h in source_horizons:
+                if h > max(target_horizons):
+                    # Consider adding a longer horizon from source
+                    new_horizons.append(h)
+        else:
+            # Moving to shorter timeframe: selectively incorporate shorter horizons
+            for h in source_horizons:
+                if h < min(target_horizons):
+                    # Consider adding a shorter horizon from source
+                    new_horizons.append(h)
+
+        # Sort and limit to a reasonable number (e.g., 6 horizons)
+        new_horizons = sorted(set(new_horizons))[:6]
+
+        # Only return if actually different
+        if list(new_horizons) != list(target_horizons):
+            return new_horizons
+
+        return None
+
+    def transfer_knowledge(self, source_bucket, target_bucket, current_episode, transfer_types=None):
+        """
+        Transfer knowledge from source bucket to target bucket.
+
+        Args:
+            source_bucket (str): Source bucket type
+            target_bucket (str): Target bucket type
+            current_episode (int): Current training episode
+            transfer_types (list, optional): Specific types of knowledge to transfer
+
+        Returns:
+            dict: Results of the transfer
+        """
+        if not transfer_types:
+            transfer_types = ['weights', 'features', 'horizons']
+
+        results = {
+            'success': False,
+            'transfer_types': [],
+            'message': ""
+        }
+
+        # Skip if cooldown hasn't elapsed
+        if not self.should_transfer(current_episode):
+            results['message'] = "Transfer on cooldown"
+            return results
+
+        # Check if source and target exist
+        if (source_bucket not in self.bucket_agents or
+            target_bucket not in self.bucket_agents):
+            results['message'] = "Source or target bucket not registered"
+            return results
+
+        # Check memory before proceeding with any transfers
+        if 'weights' in transfer_types and not self._check_memory_available(required_headroom=0.15):
+            # If we can't do weight transfer due to memory constraints,
+            # just do feature and horizon transfer which are less memory intensive
+            log(f"[MEMORY] Removing 'weights' from transfer types due to memory constraints")
+            transfer_types = [t for t in transfer_types if t != 'weights']
+
+            # If no transfer types remain, abort
+            if not transfer_types:
+                results['message'] = "Transfer aborted due to memory constraints"
+                return results

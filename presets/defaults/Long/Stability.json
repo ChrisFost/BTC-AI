@@ -1,0 +1,10 @@
+{
+    "description": "Long-term stability with moderate growth",
+    "params": {
+        "BUCKET": "Long",
+        "min_gain_per_holding_long": 40.0,
+        "max_gain_per_holding_long": 80.0,
+        "bonus_multiplier_long": 1.3,
+        "use_advanced_features": true
+    }
+}

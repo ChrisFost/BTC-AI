@@ -1,0 +1,9 @@
+{
+  "version": "0.1.0",
+  "last_updated": "2025-03-25T12:00:00",
+  "build_info": {
+    "platform": "win32",
+    "python_version": "3.10.0"
+  },
+  "release_notes": "Initial version with update mechanism"
+} 

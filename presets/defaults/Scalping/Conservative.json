@@ -1,0 +1,10 @@
+{
+    "description": "Lower risk settings with consistent results",
+    "params": {
+        "BUCKET": "Scalping",
+        "monthly_target_min": 10.0,
+        "monthly_target_max": 20.0,
+        "use_advanced_features": false,
+        "risk_tolerance": "low"
+    }
+}
