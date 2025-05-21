@@ -1,7 +1,8 @@
 """Helper for bucket forecasting using DynamicHorizonPredictor."""
 
 import torch
-from typing import Dict, Optional, List
+from datetime import datetime
+from typing import Dict, Optional
 
 try:
     from src.models.dynamic_horizon_predictor import DynamicHorizonPredictor
@@ -16,32 +17,26 @@ except Exception as e:
             features: torch.Tensor,
             requested_horizon: int = None,
             confidence: float = 0.68,
-            history_list: List[Dict] | None = None,
         ):
-            forecast = {"mean": None, "low": None, "high": None, "horizon": 0}
-            if history_list is not None:
-                history_list.append(forecast)
-            return forecast
+            return {"mean": None, "low": None, "high": None, "horizon": 0}
 
 
 class ForecastHelperManager:
-    """Manage one helper predictor per bucket.
+    """Manage one helper predictor per bucket."""
 
-    The optional ``config`` passed to :py:meth:`get_helper` may contain UI
-    parameters such as ``horizon_range``, ``frequency`` and ``capital_allocation``
-    which will be forwarded to :class:`DynamicHorizonPredictor`.
-    """
-
-    def __init__(self, backtester=None):
+    def __init__(self):
         self.helpers: Dict[str, DynamicHorizonPredictor] = {}
-        self.backtester = backtester
-        # Local history of forecasts for optional analysis
+        # Store a history of all forecasts produced
         self.forecast_history = []
 
-    def get_helper(self, bucket: str, feature_size: int, config: Optional[Dict] = None) -> DynamicHorizonPredictor:
+    def get_helper(
+        self, bucket: str, feature_size: int, config: Optional[Dict] = None
+    ) -> DynamicHorizonPredictor:
         """Return existing helper for bucket or create a new one."""
         if bucket not in self.helpers:
-            self.helpers[bucket] = DynamicHorizonPredictor(feature_size=feature_size, config=config or {})
+            self.helpers[bucket] = DynamicHorizonPredictor(
+                feature_size=feature_size, config=config or {}
+            )
         return self.helpers[bucket]
 
     def forecast(
@@ -50,28 +45,29 @@ class ForecastHelperManager:
         features: torch.Tensor,
         requested_horizon: int = None,
         confidence: float = 0.68,
-        timestamp=None,
-        history_list: Optional[List[Dict]] = None,
+        timestamp: Optional[datetime] = None,
+        backtester: Optional[object] = None,
     ) -> Dict:
-        """Get a forecast for the given bucket."""
+        """Get a forecast for the given bucket and record the result."""
         helper = self.helpers.get(bucket)
         if helper is None:
             raise ValueError(f"Helper for bucket {bucket} not initialized")
-        forecast = helper.get_forecast(
+        history_list = backtester.forecast_history if backtester is not None else None
+        result = helper.get_forecast(
             features,
             requested_horizon,
             confidence,
+            timestamp=timestamp,
             history_list=history_list,
         )
-        entry = {
-            "timestamp": timestamp,
-            "bucket": bucket,
-            "forecast": forecast,
-        }
-        # Store locally
-        self.forecast_history.append(entry)
-        if self.backtester is not None:
-            self.backtester.forecast_history.append(entry)
-        if history_list is not None and history_list is not self.forecast_history:
-            history_list.append(entry)
-        return forecast
+
+        # Record forecast with timestamp for later evaluation
+        self.forecast_history.append(
+            {
+                "timestamp": timestamp or datetime.utcnow(),
+                "bucket": bucket,
+                **result,
+            }
+        )
+
+        return result
