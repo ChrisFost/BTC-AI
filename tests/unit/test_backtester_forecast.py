@@ -28,9 +28,18 @@ def test_forecast_history_updates_prediction_quality():
 
     features = torch.tensor([[1.0]])
     ts = "2024-01-01"
-    forecast = manager.forecast("bucket", features, timestamp=ts)
+    forecast = manager.forecast(
+        "bucket",
+        features,
+        timestamp=ts,
+        history_list=backtester.forecast_history,
+    )
 
-    assert backtester.forecast_history[0]["forecast"] == forecast
+    entry = next(
+        (e for e in backtester.forecast_history if e.get("timestamp") == ts),
+        None,
+    )
+    assert entry is not None and entry["forecast"] == forecast
 
     # Update metrics using stored forecast (no prediction passed)
     backtester.update_metrics(price=100.0, timestamp=ts, target=104.0)
