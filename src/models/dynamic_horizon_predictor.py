@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
+from typing import List, Dict, Optional
 
 class DynamicHorizonPredictor(nn.Module):
     """
@@ -124,6 +125,7 @@ class DynamicHorizonPredictor(nn.Module):
         features: torch.Tensor,
         requested_horizon: int = None,
         confidence: float = 0.68,
+        history_list: Optional[List[Dict]] = None,
     ) -> dict:
         """Return a simple forecast dictionary.
 
@@ -131,6 +133,7 @@ class DynamicHorizonPredictor(nn.Module):
             features: Input features tensor.
             requested_horizon: Desired horizon. If None, use predicted mean.
             confidence: Confidence level for interval bounds (0-1).
+            history_list: Optional list to record forecast dictionaries.
 
         Returns:
             dict: {"mean", "low", "high", "horizon"}
@@ -146,16 +149,24 @@ class DynamicHorizonPredictor(nn.Module):
         mean = outputs.get("outcome_mean")
         std = outputs.get("outcome_std")
         if mean is None or std is None:
-            return {"mean": None, "low": None, "high": None, "horizon": horizon}
+            forecast = {"mean": None, "low": None, "high": None, "horizon": horizon}
+            if history_list is not None:
+                history_list.append(forecast)
+            return forecast
 
         z = stats.norm.ppf((1 + confidence) / 2)
         low = mean - z * std
         high = mean + z * std
 
-        return {
+        forecast = {
             "mean": mean.squeeze().item(),
             "low": low.squeeze().item(),
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
+
+        if history_list is not None:
+            history_list.append(forecast)
+
+        return forecast
 
