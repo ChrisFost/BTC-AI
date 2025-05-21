@@ -158,3 +158,4 @@ class DynamicHorizonPredictor(nn.Module):
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
+
