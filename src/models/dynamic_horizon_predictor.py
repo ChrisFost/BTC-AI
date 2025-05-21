@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
+from datetime import datetime
+from typing import Optional, List, Dict
 
 class DynamicHorizonPredictor(nn.Module):
     """
@@ -54,6 +56,9 @@ class DynamicHorizonPredictor(nn.Module):
 
         # Move layers to the specified device during initialization
         self.to(self.device)
+
+        # Track generated forecasts for later analysis
+        self.forecast_history = []
 
     def forward(self, features: torch.Tensor, requested_horizon: float = None):
         """
@@ -124,6 +129,8 @@ class DynamicHorizonPredictor(nn.Module):
         features: torch.Tensor,
         requested_horizon: int = None,
         confidence: float = 0.68,
+        timestamp: Optional[datetime] = None,
+        history_list: Optional[List[Dict]] = None,
     ) -> dict:
         """Return a simple forecast dictionary.
 
@@ -152,9 +159,17 @@ class DynamicHorizonPredictor(nn.Module):
         low = mean - z * std
         high = mean + z * std
 
-        return {
+        result = {
             "mean": mean.squeeze().item(),
             "low": low.squeeze().item(),
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
+
+        # Store forecast with timestamp for external analysis
+        record = {"timestamp": timestamp or datetime.utcnow(), **result}
+        self.forecast_history.append(record)
+        if history_list is not None:
+            history_list.append(record)
+
+        return result

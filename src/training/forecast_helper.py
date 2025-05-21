@@ -1,7 +1,8 @@
 """Helper for bucket forecasting using DynamicHorizonPredictor."""
 
 import torch
-from typing import Dict, Optional
+from datetime import datetime
+from typing import Dict, Optional, List
 
 try:
     from src.models.dynamic_horizon_predictor import DynamicHorizonPredictor
@@ -19,6 +20,8 @@ class ForecastHelperManager:
 
     def __init__(self):
         self.helpers: Dict[str, DynamicHorizonPredictor] = {}
+        # Store a history of all forecasts produced
+        self.forecast_history = []
 
     def get_helper(self, bucket: str, feature_size: int, config: Optional[Dict] = None) -> DynamicHorizonPredictor:
         """Return existing helper for bucket or create a new one."""
@@ -26,9 +29,31 @@ class ForecastHelperManager:
             self.helpers[bucket] = DynamicHorizonPredictor(feature_size=feature_size, config=config or {})
         return self.helpers[bucket]
 
-    def forecast(self, bucket: str, features: torch.Tensor, requested_horizon: int = None, confidence: float = 0.68) -> Dict:
-        """Get a forecast for the given bucket."""
+    def forecast(
+        self,
+        bucket: str,
+        features: torch.Tensor,
+        requested_horizon: int = None,
+        confidence: float = 0.68,
+        timestamp: Optional[datetime] = None,
+        history_list: Optional[List[Dict]] = None,
+    ) -> Dict:
+        """Get a forecast for the given bucket and record the result."""
         helper = self.helpers.get(bucket)
         if helper is None:
             raise ValueError(f"Helper for bucket {bucket} not initialized")
-        return helper.get_forecast(features, requested_horizon, confidence)
+        result = helper.get_forecast(
+            features,
+            requested_horizon,
+            confidence,
+            timestamp=timestamp,
+            history_list=history_list,
+        )
+
+        # Record forecast with timestamp for later evaluation
+        record = {"timestamp": timestamp or datetime.utcnow(), "bucket": bucket, **result}
+        self.forecast_history.append(record)
+        if history_list is not None:
+            history_list.append(record)
+
+        return result

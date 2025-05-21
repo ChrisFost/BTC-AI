@@ -38,32 +38,32 @@ try:
     log = utils_module.log
     measure_gpu_usage = utils_module.measure_gpu_usage
     optimize_memory = utils_module.optimize_memory
-    
+
     # Import training module
     training_module = importlib.import_module("src.training.training")
     train_model = training_module.train_model
-    
+
     # Import config module
     config_module = importlib.import_module("src.utils.config")
     get_config = config_module.get_config
-    
+
 except ImportError as e:
     print(f"Error importing modules in progressive_training.py: {e}")
     # Define fallback functions
     def log(message, level="info"):
         print(f"[{level.upper()}] {message}")
-    
+
     def measure_gpu_usage():
         return 0.0
-    
+
     def optimize_memory():
         import gc
         gc.collect()
-    
+
     def train_model(*args, **kwargs):
         print("Error: train_model function not available")
         return None
-    
+
     def get_config():
         return {}
 
@@ -85,28 +85,28 @@ CONFIG_FILE = os.path.join(current_dir, "config.json")
 class ProgressiveTrainer:
     """
     Handles progressive training across multiple buckets with knowledge transfer.
-    
+
     This orchestrates the sequential training of bucket models, allowing knowledge
     to flow from one bucket to another based on the training progress.
     """
-    
+
     def __init__(self, config_path: str = CONFIG_FILE, progress_callback=None):
         """
         Initialize the progressive trainer.
-        
+
         Args:
             config_path: Path to the configuration file
             progress_callback: Callback function for reporting progress
         """
         self.config_path = config_path
         self.progress_callback = progress_callback
-        
+
         # Load base configuration
         self.config = self._load_config()
-        
+
         # Training data cache
         self.data_cache = {}
-        
+
         # Knowledge transfer module
         self._initialize_knowledge_transfer()
 
@@ -115,28 +115,28 @@ class ProgressiveTrainer:
             self.forecast_manager = ForecastHelperManager()
         else:
             self.forecast_manager = None
-        
+
         # Training state
         self.current_bucket = None
         self.training_history = {}
-        
+
         # Define the standard bucket training sequence
         self.bucket_sequence = ["Scalping", "Short", "Medium", "Long"]
-        
+
         # Get directory paths
         self.models_dir = self.config.get("MODELS_DIR", MODELS_DIR_DEFAULT)
         self.log_dir = os.path.join(self.models_dir, "logs")
         os.makedirs(self.log_dir, exist_ok=True)
-        
+
         # Set up logging to file
         log_file = os.path.join(self.log_dir, "progressive_training.log")
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        
+
         logger.info(f"Initialized ProgressiveTrainer with config from {config_path}")
-    
+
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file."""
         if os.path.exists(self.config_path):
@@ -146,70 +146,70 @@ class ProgressiveTrainer:
         else:
             logger.warning(f"Config file {self.config_path} not found. Using default config.")
             return {}
-    
+
     def _initialize_knowledge_transfer(self):
         """Initialize the knowledge transfer module."""
         try:
             # Import the CrossBucketKnowledgeTransfer class
             agent_module = importlib.import_module("src.agent.agent")
             self.CrossBucketKnowledgeTransfer = agent_module.CrossBucketKnowledgeTransfer
-            
+
             # Create knowledge transfer instance
             self.knowledge_transfer = self.CrossBucketKnowledgeTransfer(self.config)
             logger.info("Initialized cross-bucket knowledge transfer")
         except Exception as e:
             logger.error(f"Failed to initialize knowledge transfer: {e}")
             self.knowledge_transfer = None
-    
+
     def _load_data(self, bucket_type: str) -> pd.DataFrame:
         """
         Load training data for a specific bucket type.
-        
+
         Args:
             bucket_type: The bucket type to load data for
-            
+
         Returns:
             DataFrame with training data
         """
         # Check if data is already loaded
         if bucket_type in self.data_cache:
             return self.data_cache[bucket_type]
-        
+
         # Determine data file based on bucket type
         data_file = f"training_data_{bucket_type.lower()}.csv"
         data_path = os.path.join(DATA_DIR, data_file)
-        
+
         if not os.path.exists(data_path):
             # Try alternative: generic training data
             data_path = os.path.join(DATA_DIR, "training_data.csv")
             if not os.path.exists(data_path):
                 raise FileNotFoundError(f"Training data not found for {bucket_type}")
-        
+
         # Load data
         df = pd.read_csv(data_path)
         logger.info(f"Loaded {len(df)} rows from {data_path}")
-        
+
         # Cache data
         self.data_cache[bucket_type] = df
-        
+
         return df
-    
+
     def _get_bucket_config(self, bucket_type: str) -> Dict[str, Any]:
         """
         Create a bucket-specific configuration.
-        
+
         Args:
             bucket_type: Bucket type to configure
-            
+
         Returns:
             Bucket-specific configuration dictionary
         """
         # Start with base config
         bucket_config = self.config.copy()
-        
+
         # Update with bucket-specific settings
         bucket_config["BUCKET"] = bucket_type
-        
+
         # Prediction horizons might be different for different buckets
         if bucket_type == "Scalping":
             bucket_config["MIN_HORIZON"] = 1
@@ -223,35 +223,35 @@ class ProgressiveTrainer:
         elif bucket_type == "Long":
             bucket_config["MIN_HORIZON"] = 72
             bucket_config["MAX_HORIZON"] = 576
-        
+
         # Create knowledge transfer directory for storing transferable insights
         bucket_config["KNOWLEDGE_TRANSFER_DIR"] = os.path.join(self.models_dir, "knowledge_transfer")
         os.makedirs(bucket_config["KNOWLEDGE_TRANSFER_DIR"], exist_ok=True)
-        
+
         return bucket_config
-    
+
     def _free_memory_and_resources(self):
         """Free memory and resources to prepare for next bucket training."""
         # Clear CUDA cache
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
+
         # Run garbage collection
         optimize_memory()
-        
+
         # Clear data cache for buckets we're not using anymore
         completed_buckets = []
         for bucket in self.bucket_sequence:
             if bucket == self.current_bucket:
                 break
             completed_buckets.append(bucket)
-        
+
         for bucket in completed_buckets:
             if bucket in self.data_cache:
                 del self.data_cache[bucket]
-        
+
         logger.info(f"Freed memory and resources. Current GPU usage: {measure_gpu_usage()*100:.1f}%")
-    
+
     def train_bucket(
         self,
         bucket_type: str,
@@ -263,24 +263,24 @@ class ProgressiveTrainer:
     ) -> str:
         """
         Train a specific bucket model.
-        
+
         Args:
             bucket_type: Bucket type to train
             episodes: Number of episodes to train for (if None, use config default)
             save_path: Directory to save model (if None, use default bucket path)
             transfer_from: Bucket to transfer knowledge from
             resume: Whether to resume training from a checkpoint
-            
+
         Returns:
             Path to the trained model
         """
         self.current_bucket = bucket_type
-        
+
         # Set up save path
         if save_path is None:
             save_path = os.path.join(self.models_dir, bucket_type, "checkpoints")
         os.makedirs(save_path, exist_ok=True)
-        
+
         # Get bucket-specific config
         bucket_config = self._get_bucket_config(bucket_type)
 
@@ -288,16 +288,16 @@ class ProgressiveTrainer:
         if ui_params:
             bucket_config.update(ui_params)
 
-        
+
         # Set episodes if specified
         if episodes is not None:
             bucket_config["MAX_EPISODES"] = episodes
-        
+
         # Log training start
         logger.info(f"Starting {bucket_type} bucket training for {bucket_config.get('MAX_EPISODES', 100)} episodes")
         if self.progress_callback:
             self.progress_callback(f"Starting {bucket_type} bucket training")
-        
+
         # Load recovery state if resuming
         recovery_state = None
         if resume:
@@ -310,13 +310,13 @@ class ProgressiveTrainer:
                 except Exception as e:
                     logger.error(f"Failed to load recovery state: {e}")
                     recovery_state = None
-        
+
         # Transfer knowledge from another bucket if specified
         if transfer_from and self.knowledge_transfer:
             logger.info(f"Transferring knowledge from {transfer_from} to {bucket_type}")
             # This will be implemented in train_model when both agents are created
             bucket_config["TRANSFER_FROM_BUCKET"] = transfer_from
-        
+
         # Load training data
         try:
             df = self._load_data(bucket_type)
@@ -331,13 +331,14 @@ class ProgressiveTrainer:
             helper = self.forecast_manager.get_helper(bucket_type, feature_size, bucket_config)
             try:
                 sample = torch.tensor(df[numeric_cols].iloc[[0]].values, dtype=torch.float32)
-                forecast = helper.get_forecast(sample)
+                ts = df.index[0] if len(df.index) > 0 else None
+                forecast = helper.get_forecast(sample, timestamp=ts)
                 logger.info(f"Initial forecast for {bucket_type}: {forecast}")
             except Exception as e:
                 logger.warning(f"Forecast helper failed: {e}")
         else:
             helper = None
-        
+
         # Train the model
         try:
             # Update progress callback for nested training function
@@ -345,7 +346,7 @@ class ProgressiveTrainer:
                 if self.progress_callback:
                     self.progress_callback(f"[{bucket_type}] {msg}")
                 logger.info(f"[{bucket_type}] {msg}")
-            
+
             # Train the model
             model, optimizer, episodes_completed, best_reward = train_model(
                 df,
@@ -354,14 +355,14 @@ class ProgressiveTrainer:
                 recovery_state=recovery_state,
                 progress_callback=nested_progress_callback
             )
-            
+
             # Update training history
             self.training_history[bucket_type] = {
                 "episodes_completed": episodes_completed,
                 "best_reward": best_reward,
                 "timestamp": time.time()
             }
-            
+
             # Save checkpoint path
             final_path = os.path.join(save_path, f"final_{bucket_type.lower()}.pth")
             if model is not None:
@@ -373,18 +374,18 @@ class ProgressiveTrainer:
                     "config": bucket_config
                 }, final_path)
                 logger.info(f"Saved final model to {final_path}")
-            
+
             # Free memory
             self._free_memory_and_resources()
-            
+
             return final_path
-        
+
         except Exception as e:
             logger.error(f"Error training {bucket_type} bucket: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
-    
+
     def train_progressively(
         self,
         custom_sequence: List[str] = None,
@@ -394,18 +395,18 @@ class ProgressiveTrainer:
     ) -> Dict[str, str]:
         """
         Train buckets progressively, transferring knowledge between them.
-        
+
         Args:
             custom_sequence: Custom sequence of buckets to train (default uses standard sequence)
             initial_bucket: Bucket to start with (if None, start with first in sequence)
             episodes_per_bucket: Dictionary of bucket -> episodes mappings
-            
+
         Returns:
             Dictionary mapping bucket types to trained model paths
         """
         # Determine training sequence
         bucket_sequence = custom_sequence or self.bucket_sequence
-        
+
         # Find starting bucket
         start_index = 0
         if initial_bucket:
@@ -413,24 +414,24 @@ class ProgressiveTrainer:
                 start_index = bucket_sequence.index(initial_bucket)
             else:
                 logger.warning(f"Initial bucket {initial_bucket} not in sequence. Starting from beginning.")
-        
+
         # Get episodes for each bucket
         if episodes_per_bucket is None:
             episodes_per_bucket = {}
-        
+
         # Initialize results
         model_paths = {}
-        
+
         # Train each bucket in sequence
         prev_bucket = None
         for i in range(start_index, len(bucket_sequence)):
             bucket = bucket_sequence[i]
             episodes = episodes_per_bucket.get(bucket, None)
-            
+
             logger.info(f"Progressive training: {i+1}/{len(bucket_sequence)} - {bucket}")
             if self.progress_callback:
                 self.progress_callback(f"Progressive training: {i+1}/{len(bucket_sequence)} - {bucket}")
-            
+
             # Train with knowledge transfer from previous bucket (if any)
             model_path = self.train_bucket(
                 bucket,
@@ -438,17 +439,17 @@ class ProgressiveTrainer:
                 transfer_from=prev_bucket,
                 ui_params=ui_params,
             )
-            
+
             # Store model path
             if model_path:
                 model_paths[bucket] = model_path
-            
+
             # Update previous bucket for next iteration
             prev_bucket = bucket
-        
+
         # Log completion
         logger.info(f"Progressive training complete. Trained {len(model_paths)}/{len(bucket_sequence)} buckets.")
-        
+
         return model_paths
 
 def main():
@@ -460,15 +461,15 @@ def main():
     parser.add_argument("--episodes", type=int, help="Number of episodes (for single bucket mode)")
     parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint if available")
     parser.add_argument("--transfer", type=str, help="Bucket to transfer knowledge from (for single bucket mode)")
-    
+
     args = parser.parse_args()
-    
+
     # Initialize trainer
     def print_progress(msg):
         print(f"[PROGRESS] {msg}")
-    
+
     trainer = ProgressiveTrainer(config_path=args.config, progress_callback=print_progress)
-    
+
     # Training mode
     if args.bucket:
         # Single bucket mode
@@ -490,13 +491,13 @@ def main():
         if args.sequence:
             sequence = args.sequence.split(",")
             print(f"Using custom bucket sequence: {sequence}")
-        
+
         print("Starting progressive training...")
         model_paths = trainer.train_progressively(custom_sequence=sequence, ui_params=None)
-        
+
         print("\nProgressive training complete. Results:")
         for bucket, path in model_paths.items():
             print(f"  {bucket}: {path}")
 
 if __name__ == "__main__":
-    main() 
+    main()
