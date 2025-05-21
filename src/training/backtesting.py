@@ -1942,31 +1942,32 @@ class Backtester:
         # Record position value
         self.position_values.append(position_value)
         
-        # Locate forecast for this timestamp if prediction not provided
-        if prediction is None and target is not None:
-            forecast_entry = next(
-                (
-                    f for f in self.forecast_history
-                    if f.get('timestamp') == timestamp
-                ),
-                None,
-            )
-            if forecast_entry is not None:
-                forecast = forecast_entry.get('forecast')
+        # Locate forecast for this timestamp
+        forecast_entry = next(
+            (
+                f for f in self.forecast_history
+                if f.get('timestamp') == timestamp
+            ),
+            None,
+        )
+
+        # Only record prediction quality if a stored forecast exists
+        if forecast_entry is not None and target is not None:
+            forecast = forecast_entry.get('forecast')
+            if prediction is None:
                 if isinstance(forecast, dict) and 'mean' in forecast:
                     prediction = forecast['mean']
                 else:
                     prediction = forecast
 
-        # Record prediction quality if available
-        if prediction is not None and target is not None:
-            self.prediction_quality.append({
-                'timestamp': timestamp,
-                'prediction': prediction,
-                'target': target,
-                'error': prediction - target,
-                'price': price
-            })
+            if prediction is not None:
+                self.prediction_quality.append({
+                    'timestamp': timestamp,
+                    'prediction': prediction,
+                    'target': target,
+                    'error': prediction - target,
+                    'price': price
+                })
     
     def run_backtest(self, data, signal_generator, strategy_params=None, verbose=True):
         """
