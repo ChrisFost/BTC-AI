@@ -1790,6 +1790,7 @@ class Backtester:
         self.total_slippage = 0.0
         self.prediction_quality = []
         self.confidence_history = []
+        self.forecast_history = []
     
     def calculate_position_size(self, signal, confidence, price, volatility=None):
         """
@@ -1941,6 +1942,22 @@ class Backtester:
         # Record position value
         self.position_values.append(position_value)
         
+        # Locate forecast for this timestamp if prediction not provided
+        if prediction is None and target is not None:
+            forecast_entry = next(
+                (
+                    f for f in self.forecast_history
+                    if f.get('timestamp') == timestamp
+                ),
+                None,
+            )
+            if forecast_entry is not None:
+                forecast = forecast_entry.get('forecast')
+                if isinstance(forecast, dict) and 'mean' in forecast:
+                    prediction = forecast['mean']
+                else:
+                    prediction = forecast
+
         # Record prediction quality if available
         if prediction is not None and target is not None:
             self.prediction_quality.append({
