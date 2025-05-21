@@ -94,6 +94,18 @@ model_paths = trainer.train_progressively(
 )
 ```
 
+You can also pass initialization details from the UI using the ``ui_params``
+argument:
+
+```python
+ui_values = {
+    "horizon_range": (12, 48),
+    "frequency": "1h",
+    "capital_allocation": 0.3,
+}
+model_paths = trainer.train_progressively(ui_params=ui_values)
+```
+
 ## Integration with Naturalistic Learning
 
 Progressive training works with the naturalistic learning features:

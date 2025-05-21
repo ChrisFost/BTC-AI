@@ -15,7 +15,12 @@ except Exception as e:
 
 
 class ForecastHelperManager:
-    """Manage one helper predictor per bucket."""
+    """Manage one helper predictor per bucket.
+
+    The optional ``config`` passed to :py:meth:`get_helper` may contain UI
+    parameters such as ``horizon_range``, ``frequency`` and ``capital_allocation``
+    which will be forwarded to :class:`DynamicHorizonPredictor`.
+    """
 
     def __init__(self):
         self.helpers: Dict[str, DynamicHorizonPredictor] = {}
