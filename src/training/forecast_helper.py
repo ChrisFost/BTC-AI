@@ -22,8 +22,9 @@ class ForecastHelperManager:
     which will be forwarded to :class:`DynamicHorizonPredictor`.
     """
 
-    def __init__(self):
+    def __init__(self, backtester=None):
         self.helpers: Dict[str, DynamicHorizonPredictor] = {}
+        self.backtester = backtester
 
     def get_helper(self, bucket: str, feature_size: int, config: Optional[Dict] = None) -> DynamicHorizonPredictor:
         """Return existing helper for bucket or create a new one."""
@@ -31,9 +32,24 @@ class ForecastHelperManager:
             self.helpers[bucket] = DynamicHorizonPredictor(feature_size=feature_size, config=config or {})
         return self.helpers[bucket]
 
-    def forecast(self, bucket: str, features: torch.Tensor, requested_horizon: int = None, confidence: float = 0.68) -> Dict:
+    def forecast(
+        self,
+        bucket: str,
+        features: torch.Tensor,
+        requested_horizon: int = None,
+        confidence: float = 0.68,
+        timestamp=None,
+    ) -> Dict:
         """Get a forecast for the given bucket."""
         helper = self.helpers.get(bucket)
         if helper is None:
             raise ValueError(f"Helper for bucket {bucket} not initialized")
-        return helper.get_forecast(features, requested_horizon, confidence)
+        forecast = helper.get_forecast(features, requested_horizon, confidence)
+        if self.backtester is not None:
+            entry = {
+                "timestamp": timestamp,
+                "bucket": bucket,
+                "forecast": forecast,
+            }
+            self.backtester.forecast_history.append(entry)
+        return forecast
