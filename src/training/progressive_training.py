@@ -13,6 +13,14 @@ import json
 import logging
 import argparse
 import importlib
+from typing import Optional, Dict
+
+# Forecast helper
+try:
+    from src.training.forecast_helper import ForecastHelperManager
+    forecast_helper_available = True
+except Exception:
+    forecast_helper_available = False
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 import pandas as pd
@@ -101,6 +109,12 @@ class ProgressiveTrainer:
         
         # Knowledge transfer module
         self._initialize_knowledge_transfer()
+
+        # Forecast helpers per bucket
+        if forecast_helper_available:
+            self.forecast_manager = ForecastHelperManager()
+        else:
+            self.forecast_manager = None
         
         # Training state
         self.current_bucket = None
@@ -238,8 +252,15 @@ class ProgressiveTrainer:
         
         logger.info(f"Freed memory and resources. Current GPU usage: {measure_gpu_usage()*100:.1f}%")
     
-    def train_bucket(self, bucket_type: str, episodes: int = None, save_path: str = None, 
-                    transfer_from: str = None, resume: bool = False) -> str:
+    def train_bucket(
+        self,
+        bucket_type: str,
+        episodes: int = None,
+        save_path: str = None,
+        transfer_from: str = None,
+        resume: bool = False,
+        ui_params: Optional[Dict] = None,
+    ) -> str:
         """
         Train a specific bucket model.
         
@@ -262,6 +283,11 @@ class ProgressiveTrainer:
         
         # Get bucket-specific config
         bucket_config = self._get_bucket_config(bucket_type)
+
+        # Update with UI parameters for initialization only
+        if ui_params:
+            bucket_config.update(ui_params)
+
         
         # Set episodes if specified
         if episodes is not None:
@@ -297,6 +323,20 @@ class ProgressiveTrainer:
         except Exception as e:
             logger.error(f"Failed to load training data: {e}")
             return None
+
+        # Initialize or retrieve forecast helper
+        if self.forecast_manager is not None:
+            numeric_cols = [c for c in df.columns if df[c].dtype != object]
+            feature_size = len(numeric_cols)
+            helper = self.forecast_manager.get_helper(bucket_type, feature_size, bucket_config)
+            try:
+                sample = torch.tensor(df[numeric_cols].iloc[[0]].values, dtype=torch.float32)
+                forecast = helper.get_forecast(sample)
+                logger.info(f"Initial forecast for {bucket_type}: {forecast}")
+            except Exception as e:
+                logger.warning(f"Forecast helper failed: {e}")
+        else:
+            helper = None
         
         # Train the model
         try:
@@ -345,8 +385,13 @@ class ProgressiveTrainer:
             logger.error(traceback.format_exc())
             return None
     
-    def train_progressively(self, custom_sequence: List[str] = None, initial_bucket: str = None,
-                          episodes_per_bucket: Dict[str, int] = None) -> Dict[str, str]:
+    def train_progressively(
+        self,
+        custom_sequence: List[str] = None,
+        initial_bucket: str = None,
+        episodes_per_bucket: Dict[str, int] = None,
+        ui_params: Optional[Dict] = None,
+    ) -> Dict[str, str]:
         """
         Train buckets progressively, transferring knowledge between them.
         
@@ -390,7 +435,8 @@ class ProgressiveTrainer:
             model_path = self.train_bucket(
                 bucket,
                 episodes=episodes,
-                transfer_from=prev_bucket
+                transfer_from=prev_bucket,
+                ui_params=ui_params,
             )
             
             # Store model path
@@ -431,7 +477,8 @@ def main():
             args.bucket,
             episodes=args.episodes,
             transfer_from=args.transfer,
-            resume=args.resume
+            resume=args.resume,
+            ui_params=None,
         )
         if model_path:
             print(f"Training complete. Model saved to {model_path}")
@@ -445,7 +492,7 @@ def main():
             print(f"Using custom bucket sequence: {sequence}")
         
         print("Starting progressive training...")
-        model_paths = trainer.train_progressively(custom_sequence=sequence)
+        model_paths = trainer.train_progressively(custom_sequence=sequence, ui_params=None)
         
         print("\nProgressive training complete. Results:")
         for bucket, path in model_paths.items():
