@@ -8,11 +8,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
 
+
 class DynamicHorizonPredictor(nn.Module):
     """
     Predicts a distribution over optimal prediction horizons and
     provides conditional outcome predictions for a requested horizon.
     """
+
     def __init__(self, feature_size: int, config: dict = None):
         """
         Initialize the predictor module.
@@ -37,8 +39,7 @@ class DynamicHorizonPredictor(nn.Module):
         # --- Encoder for requested_horizon ---
         # Simple linear encoder for the single horizon value
         self.horizon_encoder = nn.Sequential(
-             nn.Linear(1, self.horizon_embedding_dim),
-             nn.ReLU() # Add non-linearity
+            nn.Linear(1, self.horizon_embedding_dim), nn.ReLU()  # Add non-linearity
         )
 
         # --- Heads for Conditional Outcome Prediction ---
@@ -48,8 +49,8 @@ class DynamicHorizonPredictor(nn.Module):
         self.outcome_mean_head = nn.Linear(combined_feature_size, 1)
         self.outcome_log_std_head = nn.Linear(combined_feature_size, 1)
         self.outcome_confidence_head = nn.Sequential(
-             nn.Linear(combined_feature_size, 1),
-             nn.Sigmoid() # Output confidence between 0 and 1
+            nn.Linear(combined_feature_size, 1),
+            nn.Sigmoid(),  # Output confidence between 0 and 1
         )
 
         # Move layers to the specified device during initialization
@@ -83,20 +84,29 @@ class DynamicHorizonPredictor(nn.Module):
         if requested_horizon is not None:
             # Ensure requested_horizon is a tensor on the correct device
             if not isinstance(requested_horizon, torch.Tensor):
-                 # Assuming requested_horizon is a scalar or numpy array compatible value
-                 # Create a tensor matching the batch size
-                 batch_size = features.shape[0]
-                 # Use .item() if requested_horizon might be a 0-dim tensor
-                 horizon_value = float(requested_horizon.item()) if isinstance(requested_horizon, torch.Tensor) and requested_horizon.ndim == 0 else float(requested_horizon)
-                 horizon_tensor = torch.full((batch_size, 1), horizon_value,
-                                             device=self.device, dtype=torch.float32)
-            elif requested_horizon.ndim == 0: # If it's a scalar tensor
-                 batch_size = features.shape[0]
-                 horizon_tensor = requested_horizon.expand(batch_size, 1).to(self.device)
-            elif requested_horizon.ndim == 1: # If it's a batch of scalars
-                 horizon_tensor = requested_horizon.unsqueeze(-1).to(self.device)
-            else: # Assume it's already [batch_size, 1]
-                 horizon_tensor = requested_horizon.to(self.device)
+                # Assuming requested_horizon is a scalar or numpy array compatible value
+                # Create a tensor matching the batch size
+                batch_size = features.shape[0]
+                # Use .item() if requested_horizon might be a 0-dim tensor
+                horizon_value = (
+                    float(requested_horizon.item())
+                    if isinstance(requested_horizon, torch.Tensor)
+                    and requested_horizon.ndim == 0
+                    else float(requested_horizon)
+                )
+                horizon_tensor = torch.full(
+                    (batch_size, 1),
+                    horizon_value,
+                    device=self.device,
+                    dtype=torch.float32,
+                )
+            elif requested_horizon.ndim == 0:  # If it's a scalar tensor
+                batch_size = features.shape[0]
+                horizon_tensor = requested_horizon.expand(batch_size, 1).to(self.device)
+            elif requested_horizon.ndim == 1:  # If it's a batch of scalars
+                horizon_tensor = requested_horizon.unsqueeze(-1).to(self.device)
+            else:  # Assume it's already [batch_size, 1]
+                horizon_tensor = requested_horizon.to(self.device)
 
             # Encode the requested horizon
             encoded_horizon = self.horizon_encoder(horizon_tensor)
@@ -107,7 +117,7 @@ class DynamicHorizonPredictor(nn.Module):
             # Pass through outcome prediction heads
             outcome_mean = self.outcome_mean_head(combined_features)
             outcome_log_std = self.outcome_log_std_head(combined_features)
-            outcome_std = torch.exp(outcome_log_std) + 1e-6 # Ensure positive
+            outcome_std = torch.exp(outcome_log_std) + 1e-6  # Ensure positive
             outcome_confidence = self.outcome_confidence_head(combined_features)
 
         # --- Return Results ---
@@ -116,7 +126,7 @@ class DynamicHorizonPredictor(nn.Module):
             "horizon_std": horizon_std,
             "outcome_mean": outcome_mean,
             "outcome_std": outcome_std,
-            "outcome_confidence": outcome_confidence
+            "outcome_confidence": outcome_confidence,
         }
 
     def get_forecast(
@@ -139,7 +149,9 @@ class DynamicHorizonPredictor(nn.Module):
 
         # Determine horizon
         horizon_tensor = (
-            outputs["horizon_mean"] if requested_horizon is None else torch.tensor([[float(requested_horizon)]], device=self.device)
+            outputs["horizon_mean"]
+            if requested_horizon is None
+            else torch.tensor([[float(requested_horizon)]], device=self.device)
         )
         horizon = int(torch.round(horizon_tensor).mean().item())
 
@@ -158,4 +170,3 @@ class DynamicHorizonPredictor(nn.Module):
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
-
