@@ -701,13 +701,14 @@ class ProgressiveTrainer:
         
         return df
     
-    def _get_bucket_config(self, bucket_type: str) -> Dict[str, Any]:
-        """
-        Create a bucket-specific configuration.
-        
+    def _get_bucket_config(self, bucket_type: str, ui_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Create a bucket-specific configuration.
+
         Args:
             bucket_type: Bucket type to configure
-            
+            ui_params: Optional dictionary of parameters from the UI with keys
+                ``horizon_range``, ``frequency`` and ``capital_allocation``.
+
         Returns:
             Bucket-specific configuration dictionary
         """
@@ -730,6 +731,16 @@ class ProgressiveTrainer:
         elif bucket_type == "Long":
             bucket_config["MIN_HORIZON"] = 72
             bucket_config["MAX_HORIZON"] = 576
+
+        # Apply UI overrides if provided
+        if ui_params:
+            horizon_range = ui_params.get("horizon_range")
+            if horizon_range and isinstance(horizon_range, (list, tuple)) and len(horizon_range) == 2:
+                bucket_config["MIN_HORIZON"], bucket_config["MAX_HORIZON"] = horizon_range
+            if "frequency" in ui_params:
+                bucket_config["FREQUENCY"] = ui_params["frequency"]
+            if "capital_allocation" in ui_params:
+                bucket_config["CAPITAL_ALLOCATION"] = ui_params["capital_allocation"]
         
         # Create knowledge transfer directory for storing transferable insights
         bucket_config["KNOWLEDGE_TRANSFER_DIR"] = os.path.join(self.models_dir, "knowledge_transfer")
@@ -759,8 +770,9 @@ class ProgressiveTrainer:
         
         logger.info(f"Freed memory and resources. Current GPU usage: {measure_gpu_usage()*100:.1f}%")
     
-    def train_bucket(self, bucket_type: str, episodes: int = None, save_path: str = None, 
-                    transfer_from: str = None, resume: bool = False) -> str:
+    def train_bucket(self, bucket_type: str, episodes: int = None, save_path: str = None,
+                    transfer_from: str = None, resume: bool = False,
+                    ui_params: Optional[Dict[str, Any]] = None) -> str:
         """
         Train a specific bucket model.
         
@@ -770,6 +782,8 @@ class ProgressiveTrainer:
             save_path: Directory to save model (if None, use default bucket path)
             transfer_from: Bucket to transfer knowledge from
             resume: Whether to resume training from a checkpoint
+            ui_params: Optional UI parameters forwarded during initialization
+                (``horizon_range``, ``frequency``, ``capital_allocation``)
             
         Returns:
             Path to the trained model
@@ -781,8 +795,8 @@ class ProgressiveTrainer:
             save_path = os.path.join(self.models_dir, bucket_type, "checkpoints")
         os.makedirs(save_path, exist_ok=True)
         
-        # Get bucket-specific config
-        bucket_config = self._get_bucket_config(bucket_type)
+        # Get bucket-specific config including UI overrides
+        bucket_config = self._get_bucket_config(bucket_type, ui_params)
         
         # Set episodes if specified
         if episodes is not None:
@@ -867,14 +881,17 @@ class ProgressiveTrainer:
             return None
     
     def train_progressively(self, custom_sequence: List[str] = None, initial_bucket: str = None,
-                          episodes_per_bucket: Dict[str, int] = None) -> Dict[str, str]:
+                          episodes_per_bucket: Dict[str, int] = None,
+                          ui_params: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
         """
         Train buckets progressively, transferring knowledge between them.
         
         Args:
             custom_sequence: Custom sequence of buckets to train (default uses standard sequence)
             initial_bucket: Bucket to start with (if None, start with first in sequence)
-            episodes_per_bucket: Dictionary of bucket -> episodes mappings
+            episodes_per_bucket: Dictionary mapping buckets to episode counts
+            ui_params: Optional parameters forwarded to ``train_bucket``. Keys:
+                ``horizon_range``, ``frequency`` and ``capital_allocation``.
             
         Returns:
             Dictionary mapping bucket types to trained model paths
@@ -911,7 +928,8 @@ class ProgressiveTrainer:
             model_path = self.train_bucket(
                 bucket,
                 episodes=episodes,
-                transfer_from=prev_bucket
+                transfer_from=prev_bucket,
+                ui_params=ui_params
             )
             
             # Store model path
@@ -952,7 +970,8 @@ def main():
             args.bucket,
             episodes=args.episodes,
             transfer_from=args.transfer,
-            resume=args.resume
+            resume=args.resume,
+            ui_params=None,
         )
         if model_path:
             print(f"Training complete. Model saved to {model_path}")
@@ -966,7 +985,7 @@ def main():
             print(f"Using custom bucket sequence: {sequence}")
         
         print("Starting progressive training...")
-        model_paths = trainer.train_progressively(custom_sequence=sequence)
+        model_paths = trainer.train_progressively(custom_sequence=sequence, ui_params=None)
         
         print("\nProgressive training complete. Results:")
         for bucket, path in model_paths.items():

@@ -194,13 +194,17 @@ class ProgressiveTrainer:
         
         return df
     
-    def _get_bucket_config(self, bucket_type: str) -> Dict[str, Any]:
-        """
-        Create a bucket-specific configuration.
-        
+    def _get_bucket_config(self, bucket_type: str, ui_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Create a bucket-specific configuration.
+
         Args:
             bucket_type: Bucket type to configure
-            
+            ui_params: Optional dictionary of parameters supplied by the UI. The
+                following keys are recognized:
+                - ``horizon_range``: ``(min, max)`` tuple of prediction horizons
+                - ``frequency``: timeframe or data frequency string
+                - ``capital_allocation``: float representing portion of capital
+
         Returns:
             Bucket-specific configuration dictionary
         """
@@ -223,6 +227,16 @@ class ProgressiveTrainer:
         elif bucket_type == "Long":
             bucket_config["MIN_HORIZON"] = 72
             bucket_config["MAX_HORIZON"] = 576
+
+        # Apply UI-provided overrides
+        if ui_params:
+            horizon_range = ui_params.get("horizon_range")
+            if horizon_range and isinstance(horizon_range, (list, tuple)) and len(horizon_range) == 2:
+                bucket_config["MIN_HORIZON"], bucket_config["MAX_HORIZON"] = horizon_range
+            if "frequency" in ui_params:
+                bucket_config["FREQUENCY"] = ui_params["frequency"]
+            if "capital_allocation" in ui_params:
+                bucket_config["CAPITAL_ALLOCATION"] = ui_params["capital_allocation"]
         
         # Create knowledge transfer directory for storing transferable insights
         bucket_config["KNOWLEDGE_TRANSFER_DIR"] = os.path.join(self.models_dir, "knowledge_transfer")
@@ -270,7 +284,10 @@ class ProgressiveTrainer:
             save_path: Directory to save model (if None, use default bucket path)
             transfer_from: Bucket to transfer knowledge from
             resume: Whether to resume training from a checkpoint
-            
+            ui_params: Optional parameters from the UI used during bucket
+                initialization. Supported keys are ``horizon_range``,
+                ``frequency`` and ``capital_allocation``.
+
         Returns:
             Path to the trained model
         """
@@ -281,12 +298,8 @@ class ProgressiveTrainer:
             save_path = os.path.join(self.models_dir, bucket_type, "checkpoints")
         os.makedirs(save_path, exist_ok=True)
         
-        # Get bucket-specific config
-        bucket_config = self._get_bucket_config(bucket_type)
-
-        # Update with UI parameters for initialization only
-        if ui_params:
-            bucket_config.update(ui_params)
+        # Get bucket-specific config including any UI overrides
+        bucket_config = self._get_bucket_config(bucket_type, ui_params)
 
         
         # Set episodes if specified
@@ -398,8 +411,11 @@ class ProgressiveTrainer:
         Args:
             custom_sequence: Custom sequence of buckets to train (default uses standard sequence)
             initial_bucket: Bucket to start with (if None, start with first in sequence)
-            episodes_per_bucket: Dictionary of bucket -> episodes mappings
-            
+            episodes_per_bucket: Dictionary mapping buckets to episode counts
+            ui_params: Optional parameters forwarded to ``train_bucket`` for
+                each bucket. Supported keys are ``horizon_range``, ``frequency``
+                and ``capital_allocation``.
+
         Returns:
             Dictionary mapping bucket types to trained model paths
         """

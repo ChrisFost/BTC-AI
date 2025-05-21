@@ -98,10 +98,30 @@ class MockProgressiveTrainer:
             self.progress_callback(message)
         logger.info(message)
     
-    def _get_bucket_config(self, bucket_type: str) -> Dict[str, Any]:
-        """Get configuration for a specific bucket."""
+    def _get_bucket_config(self, bucket_type: str, ui_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Get configuration for a specific bucket.
+
+        Args:
+            bucket_type: Bucket type being trained
+            ui_params: Optional dictionary with ``horizon_range``, ``frequency``
+                and ``capital_allocation`` keys supplied by the UI.
+
+        Returns:
+            Configuration dictionary for the bucket.
+        """
         bucket_configs = self.config.get("BUCKET_CONFIGS", {})
-        return bucket_configs.get(bucket_type, {})
+        config = bucket_configs.get(bucket_type, {}).copy()
+
+        if ui_params:
+            horizon_range = ui_params.get("horizon_range")
+            if horizon_range and isinstance(horizon_range, (list, tuple)) and len(horizon_range) == 2:
+                config["MIN_HORIZON"], config["MAX_HORIZON"] = horizon_range
+            if "frequency" in ui_params:
+                config["FREQUENCY"] = ui_params["frequency"]
+            if "capital_allocation" in ui_params:
+                config["CAPITAL_ALLOCATION"] = ui_params["capital_allocation"]
+
+        return config
     
     def _generate_mock_metrics(self, episode: int, bucket_type: str) -> Dict[str, float]:
         """
@@ -322,8 +342,9 @@ class MockProgressiveTrainer:
         with open(memory_file, 'w') as f:
             json.dump(memory_data, f, indent=2)
     
-    def train_bucket(self, bucket_type: str, episodes: int = None, save_path: str = None, 
-                    transfer_from: str = None, resume: bool = False) -> str:
+    def train_bucket(self, bucket_type: str, episodes: int = None, save_path: str = None,
+                    transfer_from: str = None, resume: bool = False,
+                    ui_params: Optional[Dict[str, Any]] = None) -> str:
         """
         Simulate training a bucket.
         
@@ -333,12 +354,18 @@ class MockProgressiveTrainer:
             save_path: Path to save model
             transfer_from: Bucket to transfer knowledge from
             resume: Whether to resume training
+            ui_params: Optional parameters from the UI to override bucket
+                configuration. Keys can include ``horizon_range``, ``frequency``
+                and ``capital_allocation``.
             
         Returns:
             Path to trained model
         """
         # Set current bucket
         self.current_bucket = bucket_type
+
+        # Obtain bucket configuration with optional UI overrides
+        bucket_config = self._get_bucket_config(bucket_type, ui_params)
         
         # Get number of episodes from config if not provided
         if episodes is None:
