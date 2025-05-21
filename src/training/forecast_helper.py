@@ -25,6 +25,8 @@ class ForecastHelperManager:
     def __init__(self, backtester=None):
         self.helpers: Dict[str, DynamicHorizonPredictor] = {}
         self.backtester = backtester
+        # Local history of forecasts for optional analysis
+        self.forecast_history = []
 
     def get_helper(self, bucket: str, feature_size: int, config: Optional[Dict] = None) -> DynamicHorizonPredictor:
         """Return existing helper for bucket or create a new one."""
@@ -45,11 +47,13 @@ class ForecastHelperManager:
         if helper is None:
             raise ValueError(f"Helper for bucket {bucket} not initialized")
         forecast = helper.get_forecast(features, requested_horizon, confidence)
+        entry = {
+            "timestamp": timestamp,
+            "bucket": bucket,
+            "forecast": forecast,
+        }
+        # Store locally
+        self.forecast_history.append(entry)
         if self.backtester is not None:
-            entry = {
-                "timestamp": timestamp,
-                "bucket": bucket,
-                "forecast": forecast,
-            }
             self.backtester.forecast_history.append(entry)
         return forecast
