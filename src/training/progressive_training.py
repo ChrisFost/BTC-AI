@@ -331,7 +331,8 @@ class ProgressiveTrainer:
             helper = self.forecast_manager.get_helper(bucket_type, feature_size, bucket_config)
             try:
                 sample = torch.tensor(df[numeric_cols].iloc[[0]].values, dtype=torch.float32)
-                forecast = helper.get_forecast(sample)
+                ts = df.index[0] if len(df.index) > 0 else None
+                forecast = helper.get_forecast(sample, timestamp=ts)
                 logger.info(f"Initial forecast for {bucket_type}: {forecast}")
             except Exception as e:
                 logger.warning(f"Forecast helper failed: {e}")
