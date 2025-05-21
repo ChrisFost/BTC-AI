@@ -207,7 +207,7 @@ BTC-AI/
 │   ├── models/              # Neural network models
 │   │   └── models.py        # (renamed from models v2.py)
 │   ├── ui/                  # User interface
-│   │   ├── main.py          # (renamed from menu_script v2.py)
+│   │   ├── main.py          # (legacy menu script removed)
 │   │   ├── monitor_training.py  # Training monitor
 │   │   └── create_preview.py # Dashboard preview generator
 │   ├── utils/               # Shared utilities

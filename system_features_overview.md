@@ -35,10 +35,8 @@ Core modeling components that handle predictions and trading strategies. This in
 - `Models/Long/` (Subdirectory intended for long-term models, currently holds training history logs)
 - `Models/monitoring/` (Subdirectory intended for monitoring related models/scripts, currently holds monitoring logs like memory usage)
 - `Models/knowledge_transfer/` (Subdirectory intended for knowledge transfer models/scripts, currently holds knowledge transfer history logs)
-- `Models/menu.py` (Standalone PySimpleGUI control panel, functionally redundant with `src/ui/` system)
 - `Models/backtest.py`
 - `Models/evaluate.py`
-- `Models/main.py`
 - `Models/prepare_data.py`
 - `Models/probabilistic_model.py`
 - `Models/README.md`
@@ -88,7 +86,6 @@ Core modeling components that handle predictions and trading strategies. This in
         *   `CNNFeatureExtractor`: Provides a reusable 1D CNN for extracting features from time-series data (e.g., local temporal patterns). This remains a potentially valuable utility for preprocessing or specialized feature engineering.
     *   ***Supporting Model Infrastructure & Management (from `Models/` directory & `src/models/models.py`):***
         *   Organization for different model types/timeframes (e.g., `Models/Scalping/`, `Models/Short/`, `Models/Medium/`, `Models/Long/` - currently store logs/history related to these specializations).
-        *   `Models/menu.py` Assessment: This script is a standalone PySimpleGUI control panel, found to be functionally redundant with the more comprehensive and modular `src/ui/` system. It primarily interacts with scripts and configurations within the `Models/` directory itself and is a candidate for removal to avoid parallel, potentially conflicting UI systems.
         *   Utilities for model-specific data preparation (`Models/prepare_data.py`), training (`Models/train_probabilistic.py`), evaluation (`Models/evaluate.py`), and visualization (`Models/visualize.py`) - *Note: These need to be assessed for redundancy or integration with the main `src/training` and `src/utils` systems.*
         *   Potential for Knowledge Transfer mechanisms between models (implied by `Models/knowledge_transfer/` directory and its logs).
         *   General Infrastructure: Reusable low-level model components (e.g., `CrossAttention`, `TransformerBlock` in `src/models/models.py`), model persistence (save/load), factory function (`create_model`) for flexible model instantiation, device management (CPU/GPU), and extensive configuration options via `config` dictionaries.
@@ -173,7 +170,6 @@ System configuration, presets, and settings management.
 #### Key Files/Dirs:
 - `configs/` (Primary configuration directory, e.g., `config.json`, `app_state.json` - for the `src/` application)
 - `presets/` (Preset configurations for the `src/` application, e.g., `presets/defaults/`, `presets/user/`)
-- `Models/config.json` (Separate config for the `Models/menu.py` standalone UI)
 
 *Features to be documented (e.g., structure of main config files, preset system functionality, application state persistence, distinction from `Models/config.json`, versioning and compatibility of configs handled by utils)*
 
