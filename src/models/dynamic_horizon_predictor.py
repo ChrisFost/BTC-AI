@@ -6,6 +6,7 @@ Module containing the DynamicHorizonPredictor for probabilistic models.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy import stats
 
 class DynamicHorizonPredictor(nn.Module):
     """
@@ -116,4 +117,44 @@ class DynamicHorizonPredictor(nn.Module):
             "outcome_mean": outcome_mean,
             "outcome_std": outcome_std,
             "outcome_confidence": outcome_confidence
+        }
+
+    def get_forecast(
+        self,
+        features: torch.Tensor,
+        requested_horizon: int = None,
+        confidence: float = 0.68,
+    ) -> dict:
+        """Return a simple forecast dictionary.
+
+        Args:
+            features: Input features tensor.
+            requested_horizon: Desired horizon. If None, use predicted mean.
+            confidence: Confidence level for interval bounds (0-1).
+
+        Returns:
+            dict: {"mean", "low", "high", "horizon"}
+        """
+        outputs = self.forward(features, requested_horizon)
+
+        # Determine horizon
+        horizon_tensor = (
+            outputs["horizon_mean"] if requested_horizon is None else torch.tensor([[float(requested_horizon)]], device=self.device)
+        )
+        horizon = int(torch.round(horizon_tensor).mean().item())
+
+        mean = outputs.get("outcome_mean")
+        std = outputs.get("outcome_std")
+        if mean is None or std is None:
+            return {"mean": None, "low": None, "high": None, "horizon": horizon}
+
+        z = stats.norm.ppf((1 + confidence) / 2)
+        low = mean - z * std
+        high = mean + z * std
+
+        return {
+            "mean": mean.squeeze().item(),
+            "low": low.squeeze().item(),
+            "high": high.squeeze().item(),
+            "horizon": horizon,
         }
