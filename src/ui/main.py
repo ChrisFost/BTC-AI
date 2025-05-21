@@ -20,12 +20,16 @@ import time
 project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.append(project_root)
 
+# Ensure log directory exists before configuring logging
+log_dir = os.path.join(project_root, "logs")
+os.makedirs(log_dir, exist_ok=True)
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(project_root, "logs", "app.log")),
+        logging.FileHandler(os.path.join(log_dir, "app.log")),
         logging.StreamHandler()
     ]
 )
