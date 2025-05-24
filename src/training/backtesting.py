@@ -1942,32 +1942,21 @@ class Backtester:
         # Record position value
         self.position_values.append(position_value)
         
-        # Locate forecast for this timestamp
-        forecast_entry = next(
-            (
-                f for f in self.forecast_history
-                if f.get('timestamp') == timestamp
-            ),
-            None,
-        )
+        # Record prediction quality if a stored forecast exists for this timestamp
+        forecast_value = None
+        for entry in self.forecast_history:
+            if entry.get('timestamp') == timestamp:
+                forecast_value = entry.get('mean')
+                break
 
-        # Only record prediction quality if a stored forecast exists
-        if forecast_entry is not None and target is not None:
-            forecast = forecast_entry.get('forecast')
-            if prediction is None:
-                if isinstance(forecast, dict) and 'mean' in forecast:
-                    prediction = forecast['mean']
-                else:
-                    prediction = forecast
-
-            if prediction is not None:
-                self.prediction_quality.append({
-                    'timestamp': timestamp,
-                    'prediction': prediction,
-                    'target': target,
-                    'error': prediction - target,
-                    'price': price
-                })
+        if forecast_value is not None and target is not None:
+            self.prediction_quality.append({
+                'timestamp': timestamp,
+                'prediction': forecast_value,
+                'target': target,
+                'error': forecast_value - target,
+                'price': price
+            })
     
     def run_backtest(self, data, signal_generator, strategy_params=None, verbose=True):
         """

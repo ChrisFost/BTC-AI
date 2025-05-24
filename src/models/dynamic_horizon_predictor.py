@@ -7,7 +7,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
+<<<<<<< HEAD
 from typing import List, Dict, Optional
+=======
+from datetime import datetime
+from typing import Optional
+>>>>>>> 45a18a8 (Record forecasts with timestamps)
 
 
 class DynamicHorizonPredictor(nn.Module):
@@ -56,6 +61,9 @@ class DynamicHorizonPredictor(nn.Module):
 
         # Move layers to the specified device during initialization
         self.to(self.device)
+
+        # Track generated forecasts for later analysis
+        self.forecast_history = []
 
     def forward(self, features: torch.Tensor, requested_horizon: float = None):
         """
@@ -135,7 +143,12 @@ class DynamicHorizonPredictor(nn.Module):
         features: torch.Tensor,
         requested_horizon: int = None,
         confidence: float = 0.68,
+<<<<<<< HEAD
         history_list: Optional[List[Dict]] = None,
+=======
+        timestamp: Optional[datetime] = None,
+        history_list: Optional[list] = None,
+>>>>>>> 45a18a8 (Record forecasts with timestamps)
     ) -> dict:
         """Return a simple forecast dictionary.
 
@@ -170,14 +183,31 @@ class DynamicHorizonPredictor(nn.Module):
         low = mean - z * std
         high = mean + z * std
 
+<<<<<<< HEAD
         forecast = {
+=======
+        result = {
+>>>>>>> 45a18a8 (Record forecasts with timestamps)
             "mean": mean.squeeze().item(),
             "low": low.squeeze().item(),
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
 
+<<<<<<< HEAD
         if history_list is not None:
             history_list.append(forecast)
 
         return forecast
+=======
+        # Store forecast with timestamp for external analysis
+        record = {
+            "timestamp": timestamp or datetime.utcnow(),
+            **result,
+        }
+        self.forecast_history.append(record)
+        if history_list is not None:
+            history_list.append(record.copy())
+
+        return result
+>>>>>>> 45a18a8 (Record forecasts with timestamps)
