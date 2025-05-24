@@ -1,29 +1,21 @@
 #!/usr/bin/env python
 """
-Training Module for Trading Agent
-
-This module implements the training loop and evolutionary strategies
-for the reinforcement learning trading agent.
+Training module for BTC prediction agents.
+This module handles the training loop, model optimization, and convergence checks.
 """
 
-import os
-import sys
-import numpy as np
 import torch
-import random
-from collections import deque
-import gc
-import time
-from datetime import datetime
-import importlib
-import json
+import os
+import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import json
 import logging
-from typing import Dict, List, Any, Tuple, Optional, Union, Callable
-from pathlib import Path
+import time
 import signal
-import argparse
+import traceback
+import matplotlib.pyplot as plt
+from datetime import datetime
+from collections import deque
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -1683,6 +1675,41 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                             _log(f"[PREDICTIVE] Saved predictions to {predictions_file}")
                         except Exception as save_e:
                             _log(f"[WARNING] Could not save predictions: {str(save_e)}")
+                        
+                        # ===== SAVE FORECAST HISTORY WITH TIMESTAMPS =====
+                        # Save detailed forecast history from the predictive agent
+                        if hasattr(predictive_agent, 'model') and hasattr(predictive_agent.model, 'forecast_history'):
+                            try:
+                                forecast_history_file = os.path.join(predictive_agent_dir, f"{bucket_type.lower()}_forecast_history.json")
+                                # Get forecast history from the predictive agent's model
+                                forecast_history = predictive_agent.model.forecast_history
+                                
+                                if forecast_history:
+                                    # Convert datetime objects to ISO strings for JSON serialization
+                                    serializable_history = []
+                                    for record in forecast_history:
+                                        serialized_record = record.copy()
+                                        if isinstance(serialized_record.get("timestamp"), datetime):
+                                            serialized_record["timestamp"] = serialized_record["timestamp"].isoformat()
+                                        serializable_history.append(serialized_record)
+                                    
+                                    with open(forecast_history_file, 'w') as f:
+                                        json.dump({
+                                            "bucket_type": bucket_type,
+                                            "episode": episode + 1,
+                                            "saved_at": datetime.now().isoformat(),
+                                            "total_forecasts": len(serializable_history),
+                                            "forecast_history": serializable_history
+                                        }, f, indent=2)
+                                    
+                                    _log(f"[PREDICTIVE] Saved {len(serializable_history)} forecast records to {forecast_history_file}")
+                                else:
+                                    _log(f"[PREDICTIVE] No forecast history to save for {bucket_type}")
+                                    
+                            except Exception as history_save_e:
+                                _log(f"[WARNING] Could not save forecast history: {str(history_save_e)}")
+                        
+                        # ===== END SAVE FORECAST HISTORY =====
                         
                         # Make predictions available to main agents through knowledge transfer
                         if knowledge_transfer:

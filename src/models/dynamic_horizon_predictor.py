@@ -7,12 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
-<<<<<<< HEAD
-from typing import List, Dict, Optional
-=======
 from datetime import datetime
-from typing import Optional
->>>>>>> 45a18a8 (Record forecasts with timestamps)
+from typing import List, Dict, Optional
 
 
 class DynamicHorizonPredictor(nn.Module):
@@ -62,7 +58,7 @@ class DynamicHorizonPredictor(nn.Module):
         # Move layers to the specified device during initialization
         self.to(self.device)
 
-        # Track generated forecasts for later analysis
+        # Track generated forecasts for later analysis with timestamps
         self.forecast_history = []
 
     def forward(self, features: torch.Tensor, requested_horizon: float = None):
@@ -143,19 +139,16 @@ class DynamicHorizonPredictor(nn.Module):
         features: torch.Tensor,
         requested_horizon: int = None,
         confidence: float = 0.68,
-<<<<<<< HEAD
-        history_list: Optional[List[Dict]] = None,
-=======
         timestamp: Optional[datetime] = None,
-        history_list: Optional[list] = None,
->>>>>>> 45a18a8 (Record forecasts with timestamps)
+        history_list: Optional[List[Dict]] = None,
     ) -> dict:
-        """Return a simple forecast dictionary.
+        """Return a simple forecast dictionary with timestamp recording.
 
         Args:
             features: Input features tensor.
             requested_horizon: Desired horizon. If None, use predicted mean.
             confidence: Confidence level for interval bounds (0-1).
+            timestamp: Optional timestamp for the forecast. If None, uses current time.
             history_list: Optional list to record forecast dictionaries.
 
         Returns:
@@ -174,35 +167,33 @@ class DynamicHorizonPredictor(nn.Module):
         mean = outputs.get("outcome_mean")
         std = outputs.get("outcome_std")
         if mean is None or std is None:
-            forecast = {"mean": None, "low": None, "high": None, "horizon": horizon}
+            result = {"mean": None, "low": None, "high": None, "horizon": horizon}
+            
+            # Record with timestamp even for null predictions
+            record = {
+                "timestamp": timestamp or datetime.utcnow(),
+                **result,
+            }
+            self.forecast_history.append(record)
             if history_list is not None:
-                history_list.append(forecast)
-            return forecast
+                history_list.append(record.copy())
+            return result
 
         z = stats.norm.ppf((1 + confidence) / 2)
         low = mean - z * std
         high = mean + z * std
 
-<<<<<<< HEAD
-        forecast = {
-=======
         result = {
->>>>>>> 45a18a8 (Record forecasts with timestamps)
             "mean": mean.squeeze().item(),
             "low": low.squeeze().item(),
             "high": high.squeeze().item(),
             "horizon": horizon,
         }
 
-<<<<<<< HEAD
-        if history_list is not None:
-            history_list.append(forecast)
-
-        return forecast
-=======
         # Store forecast with timestamp for external analysis
         record = {
             "timestamp": timestamp or datetime.utcnow(),
+            "confidence": confidence,
             **result,
         }
         self.forecast_history.append(record)
@@ -210,4 +201,45 @@ class DynamicHorizonPredictor(nn.Module):
             history_list.append(record.copy())
 
         return result
->>>>>>> 45a18a8 (Record forecasts with timestamps)
+    
+    def get_forecast_history(self, since: Optional[datetime] = None) -> List[Dict]:
+        """
+        Get forecast history, optionally filtered by timestamp.
+        
+        Args:
+            since: Optional datetime to filter forecasts after this time
+            
+        Returns:
+            List of forecast records with timestamps
+        """
+        if since is None:
+            return self.forecast_history.copy()
+        
+        return [
+            record for record in self.forecast_history 
+            if record["timestamp"] >= since
+        ]
+    
+    def clear_forecast_history(self):
+        """Clear the forecast history."""
+        self.forecast_history.clear()
+    
+    def save_forecast_history(self, filepath: str):
+        """
+        Save forecast history to file.
+        
+        Args:
+            filepath: Path to save the forecast history
+        """
+        import json
+        
+        # Convert datetime objects to ISO strings for JSON serialization
+        serializable_history = []
+        for record in self.forecast_history:
+            serialized_record = record.copy()
+            if isinstance(serialized_record["timestamp"], datetime):
+                serialized_record["timestamp"] = serialized_record["timestamp"].isoformat()
+            serializable_history.append(serialized_record)
+        
+        with open(filepath, 'w') as f:
+            json.dump(serializable_history, f, indent=2)
