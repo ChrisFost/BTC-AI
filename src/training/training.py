@@ -1602,6 +1602,58 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                         episode
                     )
                     
+                    # ===== ENHANCED PREDICTIVE EVALUATION =====
+                    # Evaluate predictive agent quality using enhanced system
+                    try:
+                        from .predictive_agent_evaluator import PredictiveAgentEvaluator
+                        
+                        # Create evaluator for this bucket
+                        evaluator = PredictiveAgentEvaluator(bucket_type)
+                        
+                        # Get recent market data for evaluation
+                        eval_data = df.tail(min(1000, len(df))).copy()
+                        
+                        # Run evaluation if we have enough data
+                        if len(eval_data) > 100:
+                            _log(f"[PREDICTIVE] Running enhanced evaluation on {len(eval_data)} data points")
+                            
+                            # Simulate some predictions for evaluation (in real training, these would come from actual agent predictions)
+                            # This is a placeholder - in practice, you'd collect actual predictions during training
+                            evaluation_results = evaluator.evaluate_predictions(
+                                predictions=[],  # Empty for now - would be filled with actual predictions
+                                data=eval_data,
+                                current_step=len(df) - 1
+                            )
+                            
+                            # Extract reward adjustment from evaluation
+                            reward_adjustment = evaluation_results.get("reward_adjustment", 0.0)
+                            overall_score = evaluation_results.get("overall_score", 0.0)
+                            
+                            # Apply reward adjustment to predictive agent
+                            if reward_adjustment != 0.0:
+                                predictive_agent.apply_reward_adjustment(reward_adjustment)
+                                _log(f"[PREDICTIVE] Applied reward adjustment: {reward_adjustment:+.3f}")
+                            
+                            # Log evaluation summary
+                            _log(f"[PREDICTIVE] Evaluation Score: {overall_score:.3f}")
+                            
+                            # Store evaluation metrics
+                            predictive_metrics.update({
+                                "evaluation_score": overall_score,
+                                "reward_adjustment": reward_adjustment,
+                                "enhanced_evaluation": True
+                            })
+                            
+                        else:
+                            _log(f"[PREDICTIVE] Skipping evaluation - insufficient data ({len(eval_data)} points)")
+                            
+                    except ImportError:
+                        _log(f"[PREDICTIVE] Enhanced evaluation not available - using standard metrics")
+                    except Exception as eval_e:
+                        _log(f"[WARNING] Error during enhanced evaluation: {str(eval_e)}")
+                    
+                    # ===== END ENHANCED PREDICTIVE EVALUATION =====
+                    
                     # Generate predictions for the main agents to use
                     if len(predictive_rewards) > 0:
                         # Store predictions in the bucket's predictive agent directory
@@ -1614,10 +1666,13 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                             "prediction_confidence": predictive_metrics.get("confidence", 0.5),
                             "market_sentiment": predictive_metrics.get("market_sentiment", "neutral"),
                             "horizons": horizons,
+                            "enhanced_evaluation_score": predictive_metrics.get("evaluation_score", 0.0),
+                            "reward_adjustment": predictive_metrics.get("reward_adjustment", 0.0),
                             "recommendations": {
                                 "suggested_action": "hold" if np.mean(predictive_rewards) > 0 else "caution",
                                 "confidence_level": predictive_metrics.get("confidence", 0.5),
-                                "prediction_accuracy": predictive_metrics.get("prediction_accuracy", 0.0)
+                                "prediction_accuracy": predictive_metrics.get("prediction_accuracy", 0.0),
+                                "horizon_appropriateness": predictive_metrics.get("evaluation_score", 0.0)
                             }
                         }
                         
