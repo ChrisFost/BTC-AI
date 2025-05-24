@@ -1288,6 +1288,87 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
             use_cross_bucket_transfer = False
             _log("[INFO] Cross-bucket knowledge transfer disabled due to initialization error")
     
+    # ===== PREDICTIVE AGENT INITIALIZATION =====
+    # Create a dedicated predictive agent for this bucket that will train alongside the main agent
+    # and provide predictions to inform the bucket's decision making
+    predictive_agent = None
+    predictive_agent_enabled = config.get("USE_PREDICTIVE_AGENT", True)
+    
+    if predictive_agent_enabled and agents:
+        try:
+            _log(f"[INFO] Initializing dedicated predictive agent for bucket {bucket_type}")
+            
+            # Create bucket-specific predictive agent directory
+            bucket_dir = os.path.dirname(save_path)  # Parent of checkpoints dir
+            predictive_agent_dir = os.path.join(bucket_dir, "predictive_agent")
+            os.makedirs(predictive_agent_dir, exist_ok=True)
+            
+            # Create predictive agent config tailored for this bucket
+            predictive_config = config.copy()
+            predictive_config.update({
+                "AGENT_TYPE": "predictive",
+                "BUCKET_TYPE": bucket_type,
+                "PREDICTION_FOCUS": True,
+                "SAVE_DIR": predictive_agent_dir,
+                # Smaller learning rate for more stable predictions
+                "LEARNING_RATE": config.get("LEARNING_RATE", 0.0003) * 0.5,
+                # Focus on prediction accuracy over trading performance
+                "PREDICTION_WEIGHT": 0.8,
+                "TRADING_WEIGHT": 0.2
+            })
+            
+            # Create a single predictive agent (not a population)
+            predictive_agent = PPOAgent(
+                input_dim=input_dim,
+                hidden_size=config.get("HIDDEN_SIZE", 512),
+                lr=predictive_config["LEARNING_RATE"],
+                horizons=horizons,
+                use_mixed_precision=config.get("USE_MIXED_PRECISION", False) and device.type == 'cuda',
+                model_type=config.get("MODEL_TYPE", "actor_critic"),
+                device=device,
+                config=predictive_config
+            )
+            
+            # Register predictive agent with knowledge transfer system if available
+            if knowledge_transfer:
+                # Use a special key to identify this as a predictive agent
+                predictive_bucket_key = f"{bucket_type}_predictive"
+                knowledge_transfer.register_agent(predictive_bucket_key, predictive_agent)
+                _log(f"[INFO] Registered predictive agent for cross-bucket knowledge transfer")
+            
+            # Set up predictive agent save path
+            predictive_save_path = os.path.join(predictive_agent_dir, f"{bucket_type.lower()}_predictive_agent.pth")
+            
+            # Try to load existing predictive agent if available
+            if os.path.exists(predictive_save_path):
+                try:
+                    checkpoint = torch.load(predictive_save_path, map_location=device)
+                    predictive_agent.model.load_state_dict(checkpoint['model_state_dict'])
+                    predictive_agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                    if 'scheduler_state_dict' in checkpoint:
+                        predictive_agent.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                    _log(f"[INFO] Loaded existing predictive agent from {predictive_save_path}")
+                except Exception as load_e:
+                    _log(f"[WARNING] Could not load existing predictive agent: {str(load_e)}")
+                    _log("[INFO] Starting with fresh predictive agent")
+            
+            _log(f"[INFO] Predictive agent for {bucket_type} bucket initialized successfully")
+            _log(f"[INFO] Predictive agent will save to: {predictive_save_path}")
+            
+        except Exception as e:
+            error_msg = f"Error initializing predictive agent: {str(e)}"
+            _log(f"[WARNING] {error_msg}")
+            if error_handler_available:
+                handle_error(
+                    e,
+                    "train_model.initialize_predictive_agent",
+                    additional_context={"error_details": str(e), "bucket_type": bucket_type}
+                )
+            predictive_agent = None
+            _log("[INFO] Continuing training without predictive agent")
+    
+    # ===== END PREDICTIVE AGENT INITIALIZATION =====
+    
     # Track best agent and metrics
     best_agent = None
     best_fitness_score = -float('inf') # Changed from best_reward
@@ -1500,6 +1581,90 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                 
                 # Record fitness score in the population object
                 population.record_fitness(agent_idx, fitness_score) # Changed from record_reward
+
+            # ===== PREDICTIVE AGENT TRAINING =====
+            # Train the dedicated predictive agent alongside the main agents
+            if predictive_agent is not None:
+                try:
+                    _log(f"[PREDICTIVE] Training predictive agent for {bucket_type} bucket (Episode {episode + 1})")
+                    
+                    # Use a single environment for predictive agent training (first env)
+                    predictive_env = envs.envs[0]
+                    predictive_env_wrapper = VecEnvWrapper([predictive_env])
+                    
+                    # Train predictive agent with focus on prediction accuracy
+                    predictive_rewards, predictive_metrics = train_agent_episode(
+                        predictive_env_wrapper,
+                        predictive_agent,
+                        horizons,
+                        predictive_config,  # Use the predictive agent's specialized config
+                        device,
+                        episode
+                    )
+                    
+                    # Generate predictions for the main agents to use
+                    if len(predictive_rewards) > 0:
+                        # Store predictions in the bucket's predictive agent directory
+                        predictions_file = os.path.join(predictive_agent_dir, f"{bucket_type.lower()}_predictions.json")
+                        predictions_data = {
+                            "episode": episode + 1,
+                            "bucket_type": bucket_type,
+                            "timestamp": time.time(),
+                            "predicted_performance": np.mean(predictive_rewards),
+                            "prediction_confidence": predictive_metrics.get("confidence", 0.5),
+                            "market_sentiment": predictive_metrics.get("market_sentiment", "neutral"),
+                            "horizons": horizons,
+                            "recommendations": {
+                                "suggested_action": "hold" if np.mean(predictive_rewards) > 0 else "caution",
+                                "confidence_level": predictive_metrics.get("confidence", 0.5),
+                                "prediction_accuracy": predictive_metrics.get("prediction_accuracy", 0.0)
+                            }
+                        }
+                        
+                        # Save predictions for the main agents to access
+                        try:
+                            with open(predictions_file, 'w') as f:
+                                json.dump(predictions_data, f, indent=2)
+                            _log(f"[PREDICTIVE] Saved predictions to {predictions_file}")
+                        except Exception as save_e:
+                            _log(f"[WARNING] Could not save predictions: {str(save_e)}")
+                        
+                        # Make predictions available to main agents through knowledge transfer
+                        if knowledge_transfer:
+                            predictive_bucket_key = f"{bucket_type}_predictive"
+                            knowledge_transfer.register_agent(predictive_bucket_key, predictive_agent)
+                            _log(f"[PREDICTIVE] Updated predictive agent in knowledge transfer system")
+                    
+                    # Save predictive agent checkpoint periodically
+                    if (episode + 1) % config.get("PREDICTIVE_SAVE_INTERVAL", 10) == 0:
+                        try:
+                            predictive_checkpoint = {
+                                'model_state_dict': predictive_agent.model.state_dict(),
+                                'optimizer_state_dict': predictive_agent.optimizer.state_dict(),
+                                'scheduler_state_dict': predictive_agent.scheduler.state_dict() if hasattr(predictive_agent, 'scheduler') else None,
+                                'episode': episode + 1,
+                                'config': predictive_config,
+                                'bucket_type': bucket_type,
+                                'performance_metrics': predictive_metrics
+                            }
+                            torch.save(predictive_checkpoint, predictive_save_path)
+                            _log(f"[PREDICTIVE] Saved predictive agent checkpoint (Episode {episode + 1})")
+                        except Exception as save_e:
+                            _log(f"[WARNING] Could not save predictive agent checkpoint: {str(save_e)}")
+                    
+                    _log(f"[PREDICTIVE] Predictive agent training completed for episode {episode + 1}")
+                    
+                except Exception as pred_e:
+                    _log(f"[WARNING] Error training predictive agent: {str(pred_e)}")
+                    if error_handler_available:
+                        handle_error(
+                            pred_e,
+                            "train_model.predictive_agent_training",
+                            additional_context={"episode": episode + 1, "bucket_type": bucket_type}
+                        )
+                    # Continue training without predictive agent for this episode
+            
+            # ===== END PREDICTIVE AGENT TRAINING =====
 
             # Calculate statistics (raw reward stats for logging)
             mean_reward = np.mean(total_rewards) if total_rewards else 0
@@ -1908,6 +2073,60 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
               _log("[WARNING] Could not determine final best agent: Index out of bounds.")
     else:
          _log("[WARNING] Could not determine final best agent: Population tracking incomplete.")
+
+    # ===== FINAL PREDICTIVE AGENT SAVE =====
+    # Save the final state of the predictive agent
+    if 'predictive_agent' in locals() and predictive_agent is not None:
+        try:
+            _log(f"[PREDICTIVE] Saving final predictive agent for {bucket_type} bucket...")
+            
+            # Save final predictive agent checkpoint
+            final_predictive_checkpoint = {
+                'model_state_dict': predictive_agent.model.state_dict(),
+                'optimizer_state_dict': predictive_agent.optimizer.state_dict(),
+                'scheduler_state_dict': predictive_agent.scheduler.state_dict() if hasattr(predictive_agent, 'scheduler') else None,
+                'episode': episode,
+                'config': predictive_config,
+                'bucket_type': bucket_type,
+                'training_completed': True,
+                'final_fitness_score': best_fitness_score
+            }
+            
+            # Save to the predictive agent directory
+            if 'predictive_save_path' in locals():
+                torch.save(final_predictive_checkpoint, predictive_save_path)
+                _log(f"[PREDICTIVE] Final predictive agent saved to {predictive_save_path}")
+            
+            # Also save a final predictions summary
+            if 'predictive_agent_dir' in locals():
+                final_summary_file = os.path.join(predictive_agent_dir, f"{bucket_type.lower()}_final_summary.json")
+                summary_data = {
+                    "bucket_type": bucket_type,
+                    "training_completed": True,
+                    "total_episodes": episode,
+                    "final_fitness_score": best_fitness_score,
+                    "predictive_agent_path": predictive_save_path if 'predictive_save_path' in locals() else None,
+                    "timestamp": time.time(),
+                    "status": "ready_for_prediction"
+                }
+                
+                try:
+                    with open(final_summary_file, 'w') as f:
+                        json.dump(summary_data, f, indent=2)
+                    _log(f"[PREDICTIVE] Final summary saved to {final_summary_file}")
+                except Exception as summary_e:
+                    _log(f"[WARNING] Could not save final summary: {str(summary_e)}")
+            
+        except Exception as final_save_e:
+            _log(f"[WARNING] Error saving final predictive agent: {str(final_save_e)}")
+            if error_handler_available:
+                handle_error(
+                    final_save_e,
+                    "train_model.final_predictive_agent_save",
+                    additional_context={"bucket_type": bucket_type}
+                )
+    
+    # ===== END FINAL PREDICTIVE AGENT SAVE =====
 
     _log("[INFO] Returning final results.")
     return final_best_agent.model if final_best_agent else None, final_best_optimizer, episode, best_fitness_score # Return best fitness
