@@ -186,7 +186,7 @@ class TradeConfig:
         Get a configuration value by key.
         
         Args:
-            key: Configuration key (can use dot notation for nested keys)
+            key: Configuration key (can use dot notation for nested keys or legacy flat keys)
             default: Default value if key doesn't exist
             
         Returns:
@@ -199,8 +199,49 @@ class TradeConfig:
                 for k in key.split('.'):
                     value = value[k]
                 return value
-            # Direct key access
+            
+            # Handle legacy flat keys with backward compatibility mapping
+            legacy_key_mapping = {
+                "BUCKET": "trading.bucket",
+                "INITIAL_CAPITAL": "trading.initial_capital", 
+                "MAX_POSITION_HOLDINGS": "trading.max_positions",
+                "MAX_POSITIONS": "trading.max_positions",
+                "WINDOW_SIZE": "trading.window_size",
+                "LOOK_BACK_AMOUNT": "trading.look_back_amount",
+                "LOOK_BACK_UNIT": "trading.look_back_unit",
+                "RESUME_CHECKPOINT": "trading.resume_checkpoint",
+                "CHECKPOINT_INTERVAL": "trading.checkpoint_interval",
+                "HIDDEN_SIZE": "model.hidden_size",
+                "LEARNING_RATE": "model.learning_rate",
+                "BATCH_SIZE": "model.batch_size",
+                "GAMMA": "model.gamma",
+                "EPS_CLIP": "model.eps_clip",
+                "ENTROPY_COEF": "model.entropy_coef",
+                "VALUE_COEF": "model.value_coef",
+                "MAX_GRAD_NORM": "model.max_grad_norm",
+                "WEIGHT_DECAY": "model.weight_decay",
+                "MAX_BTC_PER_POSITION": "risk.max_btc_per_position",
+                "MAX_USD_PER_POSITION": "risk.max_usd_per_position", 
+                "MAX_VOLUME_PERCENTAGE": "risk.max_volume_percentage",
+                "STOP_LOSS": "risk.stop_loss",
+                "TAKE_PROFIT": "risk.take_profit",
+                "MAX_DRAWDOWN": "risk.max_drawdown",
+                "RISK_MANAGEMENT": "risk.risk_management"
+            }
+            
+            # Check if it's a legacy key
+            if key in legacy_key_mapping:
+                nested_key = legacy_key_mapping[key]
+                return self.get(nested_key, default)
+            
+            # Check for special keys that need to be computed
+            if key == "MODELS_DIR":
+                # Return the standard Models directory path
+                return os.path.join(self.base_dir, "Models")
+            
+            # Direct key access (for keys that might still be flat)
             return self.config.get(key, default)
+            
         except (KeyError, TypeError):
             return default
     

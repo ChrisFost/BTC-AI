@@ -81,7 +81,7 @@ from src.ui.notes_manager import load_notes, save_notes, notes_content
 # Constants
 VERSION = "1.0.0"  # Application version
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "config", "config.json")
-MODELS_DIR_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "models")
+MODELS_DIR_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "Models")
 
 # Try to import checkpoint validation if available
 try:
@@ -377,17 +377,31 @@ class AppState:
                 CONFIG_FILE
             ]
             
-            # Add checkpoint files
-            checkpoints_dir = os.path.join(self.config.get("MODELS_DIR", MODELS_DIR_DEFAULT), "checkpoints")
-            if os.path.exists(checkpoints_dir):
-                # Include all checkpoint files from the last 24 hours
-                checkpoint_files = glob.glob(os.path.join(checkpoints_dir, "*.pt"))
-                one_day_ago = time.time() - (24 * 60 * 60)
-                recent_checkpoints = [f for f in checkpoint_files if os.path.getmtime(f) > one_day_ago]
+            # Add checkpoint files from all bucket directories
+            models_dir = self.config.get("MODELS_DIR", MODELS_DIR_DEFAULT)
+            bucket_types = ["Scalping", "Short", "Medium", "Long"]
+            
+            for bucket in bucket_types:
+                bucket_checkpoints_dir = os.path.join(models_dir, bucket, "checkpoints")
+                if os.path.exists(bucket_checkpoints_dir):
+                    # Include all checkpoint files from the last 24 hours
+                    checkpoint_files = glob.glob(os.path.join(bucket_checkpoints_dir, "*.pt"))
+                    checkpoint_files.extend(glob.glob(os.path.join(bucket_checkpoints_dir, "*.pth")))
+                    one_day_ago = time.time() - (24 * 60 * 60)
+                    recent_checkpoints = [f for f in checkpoint_files if os.path.getmtime(f) > one_day_ago]
+                    
+                    if recent_checkpoints:
+                        critical_files.extend(recent_checkpoints)
+                        logger.info(f"Including {len(recent_checkpoints)} recent checkpoint files from {bucket} bucket in backup")
                 
-                if recent_checkpoints:
-                    critical_files.extend(recent_checkpoints)
-                    logger.info(f"Including {len(recent_checkpoints)} recent checkpoint files in backup")
+                # Also include predictive agent files
+                predictive_agent_dir = os.path.join(models_dir, bucket, "predictive_agent")
+                if os.path.exists(predictive_agent_dir):
+                    predictive_files = glob.glob(os.path.join(predictive_agent_dir, "*.pth"))
+                    predictive_files.extend(glob.glob(os.path.join(predictive_agent_dir, "*.json")))
+                    if predictive_files:
+                        critical_files.extend(predictive_files)
+                        logger.info(f"Including {len(predictive_files)} predictive agent files from {bucket} bucket in backup")
             
             # If enhanced emergency checkpoint module is available, use it
             if emergency_module_available:

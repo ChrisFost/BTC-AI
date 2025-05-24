@@ -51,15 +51,37 @@ except ImportError:
 # Constants
 project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 SCRIPT_DIR = os.path.abspath(os.path.join(project_root, "src", "training"))
-MODELS_DIR_DEFAULT = os.path.join(project_root, "models")
+MODELS_DIR_DEFAULT = os.path.join(project_root, "Models")
+
+# Ensure model directories exist for all buckets
+BUCKET_TYPES = ["Scalping", "Short", "Medium", "Long"]
+for bucket in BUCKET_TYPES:
+    bucket_dir = os.path.join(MODELS_DIR_DEFAULT, bucket)
+    checkpoints_dir = os.path.join(bucket_dir, "checkpoints")
+    predictive_dir = os.path.join(bucket_dir, "predictive_agent")
+    
+    # Create directories if they don't exist
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(predictive_dir, exist_ok=True)
+    
+    # Log directory creation
+    if not os.path.exists(os.path.join(bucket_dir, "training_log.txt")):
+        # Create initial training log if it doesn't exist
+        with open(os.path.join(bucket_dir, "training_log.txt"), 'w') as f:
+            f.write(f"Training log for {bucket} bucket\n")
+            f.write(f"Created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
 # Add validation to ensure training.py exists
 if not os.path.exists(os.path.join(SCRIPT_DIR, "training.py")):
     logger.error(f"Critical error: training.py not found in {SCRIPT_DIR}")
-    # Check if it's in Models directory instead
+    # Check if it's in Models directory instead (legacy check)
     alt_path = os.path.join(project_root, "Models")
     if os.path.exists(os.path.join(alt_path, "main.py")):
         logger.warning(f"Found main.py in Models directory instead. Consider updating references.")
+else:
+    logger.info(f"Training script validated at: {os.path.join(SCRIPT_DIR, 'training.py')}")
+    logger.info(f"Models directory configured at: {MODELS_DIR_DEFAULT}")
+    logger.info(f"Created bucket directories for: {', '.join(BUCKET_TYPES)}")
 
 class TrainingManager:
     """Class to manage training processes and state."""
