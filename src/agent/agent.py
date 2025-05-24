@@ -1213,6 +1213,60 @@ class PPOAgent:
         current_lr = self.optimizer.param_groups[0]['lr']
         log(f"Learning rate updated: {current_lr:.6f}")
     
+    def apply_reward_adjustment(self, adjustment):
+        """
+        Apply reward adjustment from enhanced predictive evaluation.
+        
+        This method allows the enhanced predictive evaluation system to provide
+        direct feedback to the agent based on prediction quality and horizon appropriateness.
+        
+        Args:
+            adjustment (float): Reward adjustment value (positive for good predictions, negative for poor ones)
+        """
+        try:
+            # Store the adjustment for potential future use
+            if not hasattr(self, 'reward_adjustments'):
+                self.reward_adjustments = []
+            
+            self.reward_adjustments.append({
+                'adjustment': adjustment,
+                'timestamp': time.time()
+            })
+            
+            # Keep only recent adjustments (last 100)
+            if len(self.reward_adjustments) > 100:
+                self.reward_adjustments = self.reward_adjustments[-100:]
+            
+            # Apply adjustment to learning rate if significant
+            if abs(adjustment) > 0.1:
+                # Positive adjustment -> increase learning rate slightly
+                # Negative adjustment -> decrease learning rate slightly
+                adjustment_factor = 1.0 + (adjustment * 0.01)  # Small adjustment
+                adjustment_factor = max(0.5, min(2.0, adjustment_factor))  # Clamp to reasonable range
+                
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] *= adjustment_factor
+                
+                log(f"Applied reward adjustment: {adjustment:+.3f}, LR factor: {adjustment_factor:.3f}")
+            
+            # Optionally adjust prediction confidence or other model parameters
+            if hasattr(self.model, 'apply_feedback'):
+                self.model.apply_feedback(adjustment)
+            
+        except Exception as e:
+            log(f"Error applying reward adjustment: {str(e)}")
+    
+    def get_reward_adjustment_history(self):
+        """
+        Get the history of reward adjustments from enhanced evaluation.
+        
+        Returns:
+            list: List of reward adjustment records
+        """
+        if hasattr(self, 'reward_adjustments'):
+            return self.reward_adjustments.copy()
+        return []
+    
     def save(self, path):
         """
         Save agent model and optimizer state.
