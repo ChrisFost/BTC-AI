@@ -229,6 +229,8 @@ class TrainingManager:
             self.process = subprocess.Popen(cmd, cwd=project_root)
             if self.app_state:
                 self.app_state.process = self.process
+                # Set training start time for performance monitoring
+                self.app_state.training_start_time = time.time()
             
             # Update UI buttons
             window["START_TRAINING"].update(disabled=True)
@@ -295,6 +297,8 @@ class TrainingManager:
             logger.info("Training process terminated")
             if self.app_state:
                 self.app_state.process = None
+                # Clear training start time
+                self.app_state.training_start_time = None
             self.process = None
             return True
             
@@ -421,20 +425,69 @@ class TrainingManager:
                     # Get metrics from the latest training run
                     bucket_type = values.get("BUCKET", "Scalping")
                     
-                    # For initial implementation, use sample metrics
-                    # In a real implementation, we would extract this from logs or model data
-                    sample_metrics = {
-                        "net_profit": 1250.50,
-                        "win_rate": 0.65,
-                        "max_drawdown": 0.12,
-                        "sharpe_ratio": 1.35,
-                        "total_trades": 45,
-                        "profit_factor": 1.8
-                    }
+                    # Load actual metrics from the performance log file
+                    perf_log_file = os.path.join(MODELS_DIR_DEFAULT, bucket_type, "performance_log.json")
+                    actual_metrics = {}
                     
-                    # Send the training completion event with metrics
-                    window.write_event_value("-TRAINING-COMPLETE-", sample_metrics)
-                    logger.info("Sent training metrics to UI for preset performance tracking")
+                    if os.path.exists(perf_log_file):
+                        try:
+                            with open(perf_log_file, "r", encoding="utf-8") as f:
+                                perf_data = json.load(f)
+                            
+                            # The training system saves performance_history as a direct array, not wrapped in {"entries": [...]}
+                            # Handle both formats for compatibility
+                            if isinstance(perf_data, list):
+                                # New format: direct array
+                                entries = perf_data[-5:] if perf_data else []
+                            elif isinstance(perf_data, dict) and "entries" in perf_data:
+                                # Legacy format: wrapped in entries
+                                entries = perf_data["entries"][-5:] if perf_data.get("entries", []) else []
+                            else:
+                                logger.error("Invalid performance data format.")
+                                return
+                            
+                            if not entries:
+                                logger.warning("Performance log file exists but contains no entries")
+                                return
+                            
+                            # Get the latest entry (training saves as a list directly)
+                            latest_entry = entries[-1]  # Get most recent
+                            episode_metrics = latest_entry.get("metrics", {})
+                            
+                            # Extract and map the actual metrics to UI format
+                            actual_metrics = {
+                                "net_profit": episode_metrics.get("net_profit", 0.0),
+                                "win_rate": episode_metrics.get("win_rate", 0.0),
+                                "max_drawdown": episode_metrics.get("max_drawdown", 0.0),
+                                "sharpe_ratio": episode_metrics.get("sharpe_ratio", 0.0),
+                                "total_trades": episode_metrics.get("total_trades", 0),
+                                "profit_factor": episode_metrics.get("profit_factor", 1.0),
+                                "episode": latest_entry.get("episode", 0),
+                                "fitness": latest_entry.get("fitness", 0.0),
+                                "reward": latest_entry.get("reward", 0.0)
+                            }
+                            logger.info(f"Loaded actual training metrics from episode {actual_metrics['episode']}")
+                        except Exception as e:
+                            logger.error(f"Error reading performance metrics from {perf_log_file}: {e}")
+                    
+                    # Fall back to sample metrics only if we couldn't load real ones
+                    if not actual_metrics:
+                        logger.warning("Using fallback sample metrics - no real training data found")
+                        actual_metrics = {
+                            "net_profit": 0.0,
+                            "win_rate": 0.0,
+                            "max_drawdown": 0.0,
+                            "sharpe_ratio": 0.0,
+                            "total_trades": 0,
+                            "profit_factor": 1.0,
+                            "episode": 0,
+                            "fitness": 0.0,
+                            "reward": 0.0
+                        }
+                    
+                    # Send the actual training metrics to UI
+                    window.write_event_value("-TRAINING-COMPLETE-", actual_metrics)
+                    logger.info("Sent actual training metrics to UI for preset performance tracking")
                     
                     # Update UI buttons
                     window.write_event_value("-UPDATE-TRAINING-BUTTONS-", {
@@ -512,21 +565,38 @@ class TrainingManager:
             with open(perf_log_file, "r", encoding="utf-8") as f:
                 perf_data = json.load(f)
             
-            # Format the most recent entries
-            if not perf_data.get("entries", []):
-                return "No performance entries found."
+            # The training system saves performance_history as a direct array, not wrapped in {"entries": [...]}
+            # Handle both formats for compatibility
+            if isinstance(perf_data, list):
+                # New format: direct array
+                entries = perf_data[-5:] if perf_data else []
+            elif isinstance(perf_data, dict) and "entries" in perf_data:
+                # Legacy format: wrapped in entries
+                entries = perf_data["entries"][-5:] if perf_data.get("entries", []) else []
+            else:
+                return "Invalid performance data format."
             
-            entries = perf_data["entries"][-5:]  # Get last 5 entries
+            if not entries:
+                return "No performance entries found."
             
             result = "Recent Performance:\n\n"
             for entry in entries:
                 metrics = entry.get("metrics", {})
-                result += f"Episode {entry.get('episode', 'N/A')} - {entry.get('timestamp', 'N/A')}\n"
+                episode = entry.get("episode", "N/A")
+                timestamp = entry.get("timestamp", "N/A")
+                
+                # Format timestamp if it's a number
+                if isinstance(timestamp, (int, float)):
+                    timestamp = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                
+                result += f"Episode {episode} - {timestamp}\n"
                 result += f"  Net Profit: ${metrics.get('net_profit', 0):.2f}\n"
                 result += f"  Win Rate: {metrics.get('win_rate', 0)*100:.1f}%\n"
-                result += f"  Sharpe: {metrics.get('sharpe', 0):.2f}\n"
+                result += f"  Sharpe: {metrics.get('sharpe_ratio', 0):.2f}\n"
                 result += f"  Max Drawdown: {metrics.get('max_drawdown', 0)*100:.1f}%\n"
-                result += f"  Trades: {metrics.get('total_trades', 0)}\n\n"
+                result += f"  Trades: {metrics.get('total_trades', 0)}\n"
+                result += f"  Fitness: {entry.get('fitness', 0):.4f}\n"
+                result += f"  Reward: {entry.get('reward', 0):.2f}\n\n"
             
             return result
         except Exception as e:

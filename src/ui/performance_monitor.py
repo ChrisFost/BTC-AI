@@ -262,11 +262,45 @@ class PerformanceMonitor:
     
     def _update_training_time(self):
         """Update training time if training is in progress."""
-        # This can be expanded to check if training is actually running
-        # For now we'll just use a placeholder
-        training_start_time = getattr(self.app_state, 'training_start_time', None)
-        if training_start_time:
+        # Check multiple ways if training is actually running
+        training_start_time = None
+        is_training = False
+        
+        # Method 1: Check app_state for training start time
+        if hasattr(self.app_state, 'training_start_time') and self.app_state.training_start_time:
+            training_start_time = self.app_state.training_start_time
+            is_training = True
+        
+        # Method 2: Check if we have an active training process
+        if hasattr(self.app_state, 'process') and self.app_state.process:
+            try:
+                # Verify the process is still running
+                if self.app_state.process.poll() is None:  # None means still running
+                    is_training = True
+                    # If we don't have a start time but process is running, estimate it
+                    if not training_start_time:
+                        # Use process creation time as fallback
+                        try:
+                            import psutil
+                            proc = psutil.Process(self.app_state.process.pid)
+                            training_start_time = proc.create_time()
+                        except:
+                            # If all else fails, use current time (not ideal but better than nothing)
+                            training_start_time = time.time()
+                else:
+                    # Process finished, clear training state
+                    is_training = False
+                    if hasattr(self.app_state, 'training_start_time'):
+                        self.app_state.training_start_time = None
+            except:
+                # Process doesn't exist anymore
+                is_training = False
+        
+        # Update metrics based on training status
+        if is_training and training_start_time:
             self.metrics['training_elapsed'] = int(time.time() - training_start_time)
+        else:
+            self.metrics['training_elapsed'] = 0
     
     def get_current_metrics(self) -> Dict[str, Any]:
         """
