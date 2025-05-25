@@ -235,6 +235,10 @@ class PPOAgent:
         """
         self.config = config or {}
         self.device = device
+        self.input_dim = input_dim  # Store input_dim for later use
+        self.hidden_size = hidden_size  # Store hidden_size for later use
+        self.horizons = horizons or [12, 36, 72, 144]  # Store horizons with default fallback
+        self.model_type = model_type  # Store model_type for later use
         
         # Initialize model
         self.model = create_model(input_dim, hidden_size, horizons=horizons,

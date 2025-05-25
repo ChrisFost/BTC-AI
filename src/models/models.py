@@ -68,7 +68,7 @@ class ActorCritic(nn.Module):
             model_type (str): Model architecture type ('transformer', 'lstm', 'gru', or 'ensemble')
             max_seq_len (int): Maximum sequence length for attention mechanisms
             device (str): Device to run model on ('cpu' or 'cuda')
-            config (dict): Additional configuration parameters
+            config (dict): Additional configuration parameters including UI settings
         """
         super().__init__()
         
@@ -79,6 +79,15 @@ class ActorCritic(nn.Module):
         self.model_type = model_type
         self.config = config or {}
         self.config['device'] = device # Ensure device is in config for predictor
+        
+        # Extract UI configuration parameters
+        self.use_fusion = self.config.get("USE_FUSION", True)
+        self.hidden_size_ui = self.config.get("HIDDEN_SIZE", hidden_size)  # UI may override hidden size
+        
+        # Use UI hidden size if provided and different from passed parameter
+        if self.hidden_size_ui != hidden_size:
+            log(f"[INFO] Using UI hidden size {self.hidden_size_ui} instead of passed {hidden_size}", "info")
+            self.hidden_size = self.hidden_size_ui
         
         # Configurable dimension for horizon embedding
         self.horizon_embedding_dim = self.config.get("HORIZON_EMBEDDING_DIM", 16)
@@ -92,21 +101,34 @@ class ActorCritic(nn.Module):
         self.gradients = {}
         
         # Log model configuration
-        log(f"Creating ActorCritic with input_dim={input_dim}, hidden_size={hidden_size}. Using Dynamic Horizon Predictor.")
+        log(f"Creating ActorCritic with input_dim={input_dim}, hidden_size={self.hidden_size}. Using Dynamic Horizon Predictor. Fusion enabled: {self.use_fusion}")
         
         # Move model to the specified device
         self.to(device)
         
-        # Transformer for sequence processing
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=input_dim, 
-            nhead=8, 
-            dim_feedforward=hidden_size, 
-            batch_first=True,
-            dropout=0.1
-        )
-        
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        # Transformer for sequence processing - with fusion support
+        if self.use_fusion:
+            # Enhanced transformer with fusion architecture
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=input_dim, 
+                nhead=8, 
+                dim_feedforward=self.hidden_size, 
+                batch_first=True,
+                dropout=0.1
+            )
+            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=6)
+            log("[INFO] Using fusion-enabled transformer architecture", "info")
+        else:
+            # Standard transformer without fusion
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=input_dim, 
+                nhead=4,  # Reduced heads for non-fusion
+                dim_feedforward=self.hidden_size // 2,  # Reduced feedforward for non-fusion
+                batch_first=True,
+                dropout=0.1
+            )
+            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=4)  # Fewer layers for non-fusion
+            log("[INFO] Using standard transformer architecture (fusion disabled)", "info")
         
         # ======= Chain of Draft Components =======
         # 1. Market Regime Analysis
@@ -194,6 +216,31 @@ class ActorCritic(nn.Module):
             nn.Linear(input_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+
+        # Calculate intermediate feature size for dynamic predictor
+        intermediate_feature_size = self.hidden_size // 2  # Size of decision_features from trading_factor_integration
+        
+        # Add horizon prediction heads that are referenced in forward method
+        self.horizon_mean_head = nn.Linear(intermediate_feature_size, 1)
+        self.horizon_log_std_head = nn.Linear(intermediate_feature_size, 1)
+        
+        # Add horizon encoder for conditional outcome prediction
+        self.horizon_encoder = nn.Sequential(
+            nn.Linear(1, self.horizon_embedding_dim),
+            nn.ReLU(),
+            nn.Linear(self.horizon_embedding_dim, self.horizon_embedding_dim)
+        )
+        
+        # Add outcome prediction heads for conditional predictions
+        outcome_input_size = intermediate_feature_size + self.horizon_embedding_dim
+        self.outcome_mean_head = nn.Linear(outcome_input_size, 1)
+        self.outcome_log_std_head = nn.Linear(outcome_input_size, 1)
+        self.outcome_confidence_head = nn.Sequential(
+            nn.Linear(outcome_input_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
 
@@ -913,11 +960,28 @@ class TransformerBlock(nn.Module):
         # Move to device
         self.to(device)
 
-def create_model(input_dim, hidden_size, model_type='actor_critic', device="cpu", config=None):
+def create_model(input_dim, hidden_size, model_type='actor_critic', device="cpu", config=None, horizons=None):
     """
     Factory function to create different models.
-    Removed horizons argument.
+    
+    Args:
+        input_dim (int): Dimension of input features
+        hidden_size (int): Size of hidden layers  
+        model_type (str): Type of model to create
+        device (str): Device to run model on
+        config (dict): Configuration parameters
+        horizons (list, optional): Prediction horizons (for backward compatibility)
+        
+    Returns:
+        torch.nn.Module: Created model
     """
+    # Add horizons to config if provided for backward compatibility
+    if config is None:
+        config = {}
+    if horizons is not None:
+        config['prediction_horizons'] = horizons
+        log(f"[INFO] Horizons parameter passed to create_model: {horizons}", "info")
+    
     if model_type == 'actor_critic_transformer': # Example specific name
          model = ActorCritic(input_dim=input_dim,
                              hidden_size=hidden_size,
