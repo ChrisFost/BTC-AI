@@ -241,8 +241,8 @@ class PPOAgent:
         self.model_type = model_type  # Store model_type for later use
         
         # Initialize model
-        self.model = create_model(input_dim, hidden_size, horizons=horizons,
-                                  model_type=model_type, device=device, config=self.config)
+        self.model = create_model(input_dim, hidden_size, model_type=model_type,
+                                  device=device, config=self.config, horizons=horizons)
         self.model.to(device)
         
         # Initialize optimizer
@@ -262,8 +262,8 @@ class PPOAgent:
         self.use_mixed_precision = use_mixed_precision
         
         # Create old model for PPO
-        self.old_model = create_model(input_dim, hidden_size, horizons=horizons,
-                                      model_type=model_type, device=device, config=self.config)
+        self.old_model = create_model(input_dim, hidden_size, model_type=model_type,
+                                      device=device, config=self.config, horizons=horizons)
         self.old_model.to(device)
         self.old_model.load_state_dict(self.model.state_dict())
         
@@ -1150,8 +1150,9 @@ class PPOAgent:
                         self.input_dim,
                         self.hidden_size,
                         model_type=self.model_type,
-                        horizons=self.horizons,
-                        device=self.device
+                        device=self.device,
+                        config=self.config,
+                        horizons=self.horizons
                     )
                     
                     # Copy weights from general model as starting point
