@@ -198,31 +198,42 @@ class BaseTradingEnv(TradingEnvInterface):
         # Store feature columns - use columns specified in config if available
         if df is not None:
             # Get feature columns from config if available, otherwise use default approach
-            if "feature_columns" in config and config["feature_columns"]:
+            excluded_cols = ['timestamp', 'date', 'datetime', 'symbol']
+            if "feature_columns" in config:
                 self.available_cols = config["feature_columns"]
-                logger.info(f"Using {len(self.available_cols)} feature columns from config")
             else:
-                # Fallback to standard features if none specified in config
-                standard_cols = [
-                    'close', 'high', 'low', 'open', 'volume',
-                    'SMA9', 'SMA21', 'SMA50', 'SMA100', 'SMA200',
-                    'RSI14', 'Stoch_K', 'Stoch_D', 'CCI', 'BB_upper20',
-                    'BB_mid20', 'BB_lower20', 'ATR', 'MACD', 'MACD_signal'
-                ]
-                
-                # Filter to only include columns that exist in the dataframe
-                self.available_cols = [col for col in standard_cols if col in df.columns]
-                
-                # Make sure at least basic price columns are included
-                if 'close' not in self.available_cols and 'close' in df.columns:
-                    self.available_cols.append('close')
-                
-                logger.info(f"Using {len(self.available_cols)} default feature columns")
+                # Extract feature columns automatically
+                self.available_cols = [col for col in df.columns if col not in excluded_cols]
+                # Store back in config for consistency
+                config["feature_columns"] = self.available_cols
             
-            logger.info(f"Feature columns: {self.available_cols}")
+            # Ensure we have required price columns
+            required_cols = ['close']
+            for col in required_cols:
+                if col not in df.columns:
+                    raise ValueError(f"Required column '{col}' missing from DataFrame")
         else:
-            self.available_cols = []
-            logger.warning("No dataframe provided, available columns will be empty")
+            # Default feature set if no dataframe provided
+            self.available_cols = ['close', 'high', 'low', 'volume']
+            config["feature_columns"] = self.available_cols
+        
+        # Set observation dimension in config for training system
+        # CRITICAL FIX: Calculate actual input dimension based on flattened observation
+        # Flattened observation includes:
+        # - 3 market scalars (price, volatility, mean_returns)  
+        # - len(available_cols) feature values
+        # - 3 position scalars (num_positions, avg_entry_price, unrealized_pnl)
+        # - 2 agent state scalars (capital_ratio, has_withdrawals)
+        actual_input_dim = 3 + len(self.available_cols) + 3 + 2
+        config["observation_dim"] = actual_input_dim
+        config["input_dim"] = actual_input_dim
+        
+        # Set up withdrawal simulation schedule if enabled
+        self._withdrawal_deposit_schedule = []
+        
+        logger.info(f"Using {len(self.available_cols)} feature columns")
+        logger.info(f"Calculated observation dimension: {actual_input_dim}")
+        logger.info(f"Feature columns: {self.available_cols}")
 
     def reset(self):
         """Reset the environment to initial state for new episode"""
@@ -352,8 +363,74 @@ class BaseTradingEnv(TradingEnvInterface):
         # Extract observation using only the available columns defined during initialization
         raw_obs = extract_observation(self.df, start_idx, end_idx, self.available_cols)
         
-        # Standardize observation
-        return standardize_observation(raw_obs)
+        # Standardize observation (returns dict format)
+        standardized_obs = standardize_observation(raw_obs, self)
+        
+        if standardized_obs is None:
+            return None
+        
+        # CRITICAL FIX: Flatten observation to numpy array for consistent interface
+        # The training system expects a flat array, not a nested dictionary
+        flattened_obs = self._flatten_observation(standardized_obs)
+        
+        return flattened_obs
+    
+    def _flatten_observation(self, obs_dict):
+        """
+        Flatten nested observation dictionary to numpy array.
+        
+        Args:
+            obs_dict (dict): Nested observation dictionary from standardize_observation
+            
+        Returns:
+            numpy.ndarray: Flattened observation array
+        """
+        import numpy as np
+        
+        flat_values = []
+        
+        # Extract market data
+        market_data = obs_dict.get('market_data', {})
+        flat_values.append(market_data.get('price', 0.0))
+        flat_values.append(market_data.get('volatility', 0.0))
+        
+        # Add mean returns (scalar from returns array)
+        returns = market_data.get('returns', np.array([0.0]))
+        if len(returns) > 0:
+            flat_values.append(np.mean(returns))
+        else:
+            flat_values.append(0.0)
+        
+        # Add feature values for each available column
+        for col in self.available_cols:
+            if col in market_data:
+                feature_values = market_data[col]
+                if hasattr(feature_values, '__iter__') and not isinstance(feature_values, str):
+                    # If it's an array, take the last value
+                    if len(feature_values) > 0:
+                        flat_values.append(float(feature_values[-1]))
+                    else:
+                        flat_values.append(0.0)
+                else:
+                    # If it's a scalar
+                    flat_values.append(float(feature_values))
+            else:
+                # Missing feature, use 0
+                flat_values.append(0.0)
+        
+        # Add position data
+        position_data = obs_dict.get('position_data', {})
+        flat_values.append(position_data.get('num_positions', 0))
+        flat_values.append(position_data.get('avg_entry_price', 0.0))
+        flat_values.append(position_data.get('unrealized_pnl', 0.0))
+        
+        # Add agent state
+        agent_state = obs_dict.get('agent_state', {})
+        flat_values.append(agent_state.get('capital_ratio', 1.0))
+        flat_values.append(agent_state.get('has_withdrawals', 0))
+        
+        # Convert to numpy array
+        return np.array(flat_values, dtype=np.float32)
     
     def _update_rolling_volume(self, bar_idx, notional):
         """Update the 30-day rolling volume for fee calculation"""
@@ -1457,6 +1534,64 @@ class VecEnvWrapper:
         self.num_envs = len(self.envs)
         logger.info(f"Created VecEnvWrapper with {self.num_envs} environments")
     
+    @property
+    def observation_space(self):
+        """
+        Get observation space from the first environment.
+        
+        Returns:
+            object: Observation space with shape attribute
+        """
+        if not self.envs:
+            return None
+        
+        # Get a sample observation from the first environment to determine shape
+        sample_obs = self.envs[0]._get_observation()
+        if sample_obs is None:
+            # If no observation available, reset and try again
+            sample_obs = self.envs[0].reset()
+        
+        if sample_obs is not None:
+            # Create a simple object with shape attribute
+            class ObservationSpace:
+                def __init__(self, shape):
+                    self.shape = shape
+            
+            # Handle different observation formats
+            if hasattr(sample_obs, 'shape'):
+                # Tensor or numpy array
+                obs_shape = sample_obs.shape
+            elif isinstance(sample_obs, (list, tuple)):
+                # List or tuple
+                obs_shape = (len(sample_obs),)
+            elif isinstance(sample_obs, dict):
+                # Dictionary - flatten all numeric values
+                flat_values = []
+                def flatten_dict(d):
+                    for value in d.values():
+                        if isinstance(value, (int, float)):
+                            flat_values.append(value)
+                        elif isinstance(value, dict):
+                            flatten_dict(value)
+                        elif hasattr(value, '__iter__') and not isinstance(value, str):
+                            for item in value:
+                                if isinstance(item, (int, float)):
+                                    flat_values.append(item)
+                
+                flatten_dict(sample_obs)
+                obs_shape = (len(flat_values),)
+            else:
+                # Scalar or unknown format
+                obs_shape = (1,)
+            
+            return ObservationSpace(obs_shape)
+        
+        # Fallback if no observation available
+        class ObservationSpace:
+            def __init__(self, shape):
+                self.shape = shape
+        return ObservationSpace((1,))  # Default shape
+    
     def reset(self):
         """
         Reset all environments.
@@ -1562,11 +1697,37 @@ def create_environment(df=None, config=None, device="cpu"):
     
     # Get parameters from config
     df = config.get("df", None)
-    window_size = config.get("window_size", 60)
-    initial_capital = config.get("initial_capital", 10000)
-    max_positions = config.get("max_positions", 5)
-    bucket = config.get("trading_mode", "Medium")
-    use_tensor = config.get("use_tensor", False)
+    window_size = config.get("window_size", config.get("WINDOW_SIZE", 60))
+    initial_capital = config.get("initial_capital", config.get("INITIAL_CAPITAL", 10000))
+    max_positions = config.get("max_positions", config.get("MAX_POSITION_HOLDINGS", 5))
+    
+    # CRITICAL FIX: Handle both trading_mode and BUCKET parameter names
+    bucket = config.get("trading_mode", config.get("BUCKET", "Medium"))
+    # Ensure consistency - store both for compatibility
+    config["trading_mode"] = bucket
+    config["BUCKET"] = bucket
+    
+    use_tensor = config.get("use_tensor", config.get("TENSOR_BASED_ENV", False))
+    
+    # CRITICAL FIX: Set up feature columns for observation space consistency
+    if df is not None and hasattr(df, 'columns'):
+        # Exclude non-feature columns
+        excluded_cols = ['timestamp', 'date', 'datetime', 'symbol']
+        feature_columns = [col for col in df.columns if col not in excluded_cols]
+        config["feature_columns"] = feature_columns
+        
+        # CRITICAL FIX: Calculate actual input dimension based on flattened observation
+        # Flattened observation includes:
+        # - 3 market scalars (price, volatility, mean_returns)
+        # - len(feature_columns) feature values
+        # - 3 position scalars (num_positions, avg_entry_price, unrealized_pnl)
+        # - 2 agent state scalars (capital_ratio, has_withdrawals)
+        actual_input_dim = 3 + len(feature_columns) + 3 + 2
+        config["input_dim"] = actual_input_dim
+        config["observation_dim"] = actual_input_dim
+        
+        log(f"[INFO] Environment detected {len(feature_columns)} feature columns", "info")
+        log(f"[INFO] Calculated observation dimension: {actual_input_dim}", "info")
     
     # Use tensor environment if device is CUDA or explicitly requested
     if use_tensor or (device == "cuda"):
