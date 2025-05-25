@@ -768,12 +768,24 @@ class BaseTradingEnv(TradingEnvInterface):
                 if predictions:
                     # Extract confidence and prediction uncertainty for risk adjustment
                     # Use the actual field names from the new predictive system
-                    confidence_score = predictions.get("prediction_confidence", None)
+                    raw_confidence = predictions.get("prediction_confidence", None)
                     
                     # If not available, try from recommendations nested structure
-                    if confidence_score is None:
+                    if raw_confidence is None:
                         recommendations = predictions.get("recommendations", {})
-                        confidence_score = recommendations.get("confidence_level", None)
+                        raw_confidence = recommendations.get("confidence_level", None)
+                    
+                    # Apply horizon-weighted confidence calculation for bucket-specific confidence
+                    if raw_confidence is not None:
+                        # Use the risk manager's horizon weighting to get bucket-appropriate confidence
+                        confidence_score = self.risk_manager.calculate_horizon_weighted_confidence(predictions)
+                        
+                        # Log the horizon weighting adjustment if significant
+                        if abs(confidence_score - raw_confidence) > 0.05:
+                            log(f"[HORIZON] Adjusted confidence from {raw_confidence:.3f} to {confidence_score:.3f} for {self.bucket} bucket", "info")
+                    else:
+                        # Fall back to horizon-weighted calculation with default
+                        confidence_score = self.risk_manager.calculate_horizon_weighted_confidence(predictions)
                     
                     # Extract dynamic confidence threshold set by the predictive agent
                     dynamic_confidence_threshold = predictions.get("dynamic_confidence_threshold", None)
