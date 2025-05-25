@@ -349,40 +349,52 @@ class BaseTradingEnv(TradingEnvInterface):
     
     def __init__(self, df, window_size, initial_capital, max_positions, bucket, config):
         """
-        Initialize base trading environment.
+        Initialize the trading environment.
         
         Args:
-            df (pandas.DataFrame): DataFrame with OHLCV and feature data.
+            df (pandas.DataFrame): Market data.
             window_size (int): Number of bars for observation window.
-            initial_capital (float): Starting capital in USD.
-            max_positions (int): Maximum number of open positions.
-            bucket (str): Trading timeframe bucket ('Scalping', 'Short', 'Medium', 'Long').
-            config (dict): Configuration dictionary for dynamic settings.
+            initial_capital (float): Starting capital amount.
+            max_positions (int): Maximum concurrent positions.
+            bucket (str): Trading bucket (Scalping, Short, Medium, Long).
+            config (dict): Configuration parameters.
         """
-        self.df = df.reset_index(drop=True) if df is not None else None
+        self.id = str(uuid.uuid4())
+        self.df = df
         self.window_size = window_size
         self.initial_capital = initial_capital
         self.max_positions = max_positions
         self.bucket = bucket
         self.config = config
         
-        # Core state variables
-        self.current_step = window_size
+        # Trading state
+        self.current_step = window_size  # Start after the window
         self.capital = initial_capital
-        self.positions = []  # List of Position objects
-        self.closed_trades = []  # List of Trade objects
+        self.positions = []  # Always use Position objects for consistency
+        self.closed_trades = []  # Always use Trade objects for consistency
         self.profits = []
         self.losses = []
         self.returns = []
         self.done = False
         
-        # Currency management - differentiate between USD and USDT
-        # Capital is in USDT (trading currency), withdrawals are in USD
-        self.usdt_balance = initial_capital  # Capital for trading (same as self.capital)
-        self.usd_balance = 0.0  # Available USD for withdrawals
-        self.usd_reserved = 0.0  # USD reserved for pending withdrawals
+        # Grace period system implementation
+        self.grace_period_bars = config.get("GRACE_PERIOD_BARS", 200)
+        self.penalty_interval = config.get("PENALTY_INTERVAL", 2) 
+        self.base_penalty = config.get("BASE_PENALTY", 0.05)
+        self.penalty_increment = config.get("PENALTY_INCREMENT", 0.05)
+        self.episode_start_step = self.current_step  # Track episode start for grace period
         
-        # Withdrawal management
+        # Performance caching to eliminate bottlenecks
+        self._cached_risk_metrics = None
+        self._risk_cache_step = -1
+        self._cached_portfolio_value = None
+        self._portfolio_cache_step = -1
+        
+        # Action tracking for debugging lost actions
+        self.action_log = []
+        self.failed_actions = []
+        
+        # Withdrawal simulation
         self.withdrawals = []  # List of Withdrawal objects
         self.profit_reserve_ratio = config.get("profit_reserve_ratio", 0.3)  # Reserve 30% of profits by default
         self.deposit_conversion_fee = config.get("deposit_conversion_fee", 0.001)  # 0.1% fee for USD->USDT
@@ -412,6 +424,17 @@ class BaseTradingEnv(TradingEnvInterface):
             # If real interface fails to import/initialize, use fallback
             log(f"[FALLBACK] Real predictive interface failed ({str(e)}), using robust fallback system", "warning")
             self.predictive_interface = PredictiveAgentFallback(self.bucket)
+        
+        # Multi-currency management
+        self.usdt_balance = 0.0
+        self.usd_balance = 0.0
+        self.usd_reserved = 0.0
+        
+        # Setup withdrawal simulation
+        if config.get("simulate_withdrawals", False):
+            self._setup_withdrawal_simulation()
+            
+        log(f"[ENV] Initialized {bucket} trading environment with {initial_capital} capital and grace period of {self.grace_period_bars} bars")
         
         # Store feature columns - use columns specified in config if available
         if df is not None:
@@ -702,27 +725,153 @@ class BaseTradingEnv(TradingEnvInterface):
             return 0.0
     
     def _calculate_portfolio_risk(self):
-        """Retrieve portfolio risk metrics from the risk manager."""
-        try:
-            current_price = self.df.loc[self.current_step, "close"]
-        except (AttributeError, KeyError, IndexError):
-            current_price = 0.0
-            
-            if len(self.positions) > 0:
-                # Use the latest entry price if we can't get current price
-                if isinstance(self.positions[-1], Position):
-                    current_price = self.positions[-1].entry_price
-                elif isinstance(self.positions[-1], dict):
-                    current_price = self.positions[-1]["entry_price"]
+        """
+        Calculate portfolio risk metrics with performance caching.
         
-        # Calculate risk metrics using the risk manager
-        return self.risk_manager.calculate_risk_metrics(
-            self.positions, 
-            self.capital,
-            current_price,
-            self.returns,
-            self.liquidity_history
-        )
+        Returns:
+            dict: Risk metrics including overall score, drawdown, leverage, etc.
+        """
+        # Use cached result if available for this step
+        if self._cached_risk_metrics is not None and self._risk_cache_step == self.current_step:
+            return self._cached_risk_metrics
+        
+        # Calculate portfolio value with caching
+        portfolio_value = self._get_cached_portfolio_value()
+        
+        # Initialize risk metrics
+        risk_metrics = {
+            "portfolio_value": portfolio_value,
+            "cash_ratio": self.capital / self.initial_capital if self.initial_capital > 0 else 0,
+            "position_count": len(self.positions),
+            "max_position_limit": self.max_positions,
+            "position_utilization": len(self.positions) / self.max_positions if self.max_positions > 0 else 0,
+            "overall_risk_score": 0.5  # Default medium risk
+        }
+        
+        # Calculate position-based risk metrics
+        if self.positions:
+            position_values = []
+            total_position_value = 0
+            current_price = self._current_price()
+            
+            for position in self.positions:
+                if isinstance(position, Position):
+                    pos_value = position.size_btc * current_price
+                elif isinstance(position, dict):
+                    # Convert dict to Position object for consistency
+                    position = Position(
+                        size_btc=position["size_btc"],
+                        entry_price=position["entry_price"], 
+                        entry_step=position["entry_step"]
+                    )
+                    pos_value = position.size_btc * current_price
+                else:
+                    pos_value = 0
+                    
+                position_values.append(pos_value)
+                total_position_value += pos_value
+            
+            # Position concentration risk
+            if position_values:
+                largest_position = max(position_values)
+                risk_metrics["position_concentration"] = largest_position / total_position_value if total_position_value > 0 else 0
+                risk_metrics["position_diversity"] = len(position_values) / self.max_positions if self.max_positions > 0 else 0
+            else:
+                risk_metrics["position_concentration"] = 0
+                risk_metrics["position_diversity"] = 0
+                
+            # Leverage calculation
+            total_exposure = total_position_value
+            risk_metrics["leverage"] = total_exposure / self.initial_capital if self.initial_capital > 0 else 0
+        else:
+            risk_metrics["position_concentration"] = 0
+            risk_metrics["position_diversity"] = 0
+            risk_metrics["leverage"] = 0
+        
+        # Calculate drawdown from returns history
+        if len(self.returns) > 0:
+            cumulative_returns = np.cumsum(self.returns)
+            running_max = np.maximum.accumulate(cumulative_returns)
+            drawdowns = running_max - cumulative_returns
+            risk_metrics["drawdown"] = np.max(drawdowns) if len(drawdowns) > 0 else 0
+        else:
+            risk_metrics["drawdown"] = 0
+        
+        # Market exposure (time in market)
+        bars_since_start = self.current_step - self.window_size
+        risk_metrics["market_exposure"] = min(1.0, bars_since_start / 288) if bars_since_start > 0 else 0  # Normalize by ~1 day
+        
+        # Overall risk score calculation (0-1, higher = more risky)
+        risk_components = [
+            risk_metrics["position_utilization"] * 0.3,  # Position utilization weight
+            risk_metrics["leverage"] * 0.25,  # Leverage weight
+            risk_metrics["drawdown"] * 0.25,  # Drawdown weight
+            risk_metrics["position_concentration"] * 0.2  # Concentration weight
+        ]
+        risk_metrics["overall_risk_score"] = min(1.0, sum(risk_components))
+        
+        # Apply grace period considerations
+        bars_since_episode_start = self.current_step - self.episode_start_step
+        risk_metrics["grace_period_active"] = bars_since_episode_start < self.grace_period_bars
+        risk_metrics["grace_period_remaining"] = max(0, self.grace_period_bars - bars_since_episode_start)
+        
+        # Cache the result
+        self._cached_risk_metrics = risk_metrics
+        self._risk_cache_step = self.current_step
+        
+        return risk_metrics
+    
+    def _get_cached_portfolio_value(self):
+        """Get portfolio value with caching for performance."""
+        if self._cached_portfolio_value is not None and self._portfolio_cache_step == self.current_step:
+            return self._cached_portfolio_value
+            
+        portfolio_value = self.capital
+        if self.positions:
+            current_price = self._current_price()
+            for position in self.positions:
+                if isinstance(position, Position):
+                    portfolio_value += position.size_btc * current_price
+                elif isinstance(position, dict):
+                    portfolio_value += position["size_btc"] * current_price
+                    
+        self._cached_portfolio_value = portfolio_value
+        self._portfolio_cache_step = self.current_step
+        return portfolio_value
+    
+    def _apply_grace_period_penalty(self, base_reward):
+        """
+        Apply grace period and penalty system to reward calculation.
+        
+        Args:
+            base_reward (float): Base reward from trades
+            
+        Returns:
+            float: Adjusted reward with grace period considerations
+        """
+        bars_since_episode_start = self.current_step - self.episode_start_step
+        
+        # No penalties during grace period
+        if bars_since_episode_start < self.grace_period_bars:
+            return base_reward
+        
+        # Calculate penalty intervals passed since grace period ended
+        bars_since_grace_end = bars_since_episode_start - self.grace_period_bars
+        penalty_intervals = bars_since_grace_end // self.penalty_interval
+        
+        # Apply increasing penalty over time
+        if penalty_intervals > 0 and len(self.closed_trades) == 0:
+            # Only apply penalty if no trades have been made
+            penalty_multiplier = self.base_penalty + (penalty_intervals * self.penalty_increment)
+            penalty = penalty_multiplier * abs(base_reward) if base_reward != 0 else penalty_multiplier * 0.1
+            
+            # Log penalty application for debugging
+            if penalty > 0:
+                log(f"[GRACE] Applied penalty {penalty:.3f} after {bars_since_grace_end} bars past grace period", "debug")
+            
+            return base_reward - penalty
+        
+        return base_reward
     
     def _calculate_size_limits(self, price, daily_volume):
         """
@@ -1608,15 +1757,30 @@ class BaseTradingEnv(TradingEnvInterface):
         
     def _execute_agent_order(self, direction, fraction):
         """
-        Execute an order based on the agent's action.
+        Execute an order based on the agent's action with improved tracking and consistency.
         
         Args:
             direction (float): Direction of the order (-1 to 1, negative for sell, positive for buy)
             fraction (float): Fraction of capital to use (0 to 1)
         """
         if self.df is None or self.current_step >= len(self.df):
+            self.failed_actions.append({
+                "step": self.current_step,
+                "reason": "No market data available",
+                "direction": direction,
+                "fraction": fraction
+            })
             return
             
+        # Log action for debugging
+        action_entry = {
+            "step": self.current_step,
+            "direction": direction,
+            "fraction": fraction,
+            "timestamp": time.time()
+        }
+        self.action_log.append(action_entry)
+        
         price = self._current_price()
         daily_volume = self.df.loc[self.current_step, "volume"] * 288  # Estimate daily volume
         
@@ -1624,6 +1788,13 @@ class BaseTradingEnv(TradingEnvInterface):
         if direction > 0.1:
             # Skip buy orders if we've reached maximum positions
             if len(self.positions) >= self.max_positions:
+                self.failed_actions.append({
+                    "step": self.current_step,
+                    "reason": f"Max positions reached ({len(self.positions)}/{self.max_positions})",
+                    "direction": direction,
+                    "fraction": fraction
+                })
+                log(f"[ACTION] Buy order rejected - max positions reached ({len(self.positions)}/{self.max_positions})", "debug")
                 return
                 
             # Calculate maximum size based on position limits
@@ -1641,53 +1812,91 @@ class BaseTradingEnv(TradingEnvInterface):
                 desired_size_btc = usd / effective_price
                 size_btc = min(desired_size_btc, max_size_btc)
                 
-                # Double-check final position value stays within USD limit (handles floating point precision issues)
+                # Double-check final position value stays within USD limit
                 while size_btc * effective_price > max_usd and size_btc > 1e-8:
                     size_btc = size_btc * 0.999  # Reduce by 0.1% until we're within limit
                 
                 actual_usd = size_btc * effective_price
                 
-                # Execute the full order - only if we haven't reached position limit
-                if len(self.positions) < self.max_positions:
+                # Execute the order - always use Position objects for consistency
+                if len(self.positions) < self.max_positions and size_btc > 1e-8:
                     self._update_rolling_volume(self.current_step, actual_usd)
                     fee = self._calculate_fee(actual_usd)
                     cost = actual_usd + fee
                     self.capital -= min(cost, self.capital)
-                    self.positions.append({
-                        "size_btc": size_btc, 
-                        "entry_price": effective_price, 
-                        "entry_step": self.current_step
+                    
+                    # Create Position object consistently
+                    new_position = Position(
+                        size_btc=size_btc, 
+                        entry_price=effective_price, 
+                        entry_step=self.current_step
+                    )
+                    self.positions.append(new_position)
+                    
+                    # Update action log with success
+                    action_entry["executed"] = True
+                    action_entry["size_btc"] = size_btc
+                    action_entry["effective_price"] = effective_price
+                    
+                    log(f"[ACTION] Buy executed - {size_btc:.6f} BTC @ ${effective_price:.2f}", "debug")
+                else:
+                    self.failed_actions.append({
+                        "step": self.current_step,
+                        "reason": f"Position size too small ({size_btc:.8f} BTC) or limit reached",
+                        "direction": direction,
+                        "fraction": fraction
                     })
         
         # Handle selling (direction < -0.1)
         elif direction < -0.1 and self.positions:
-            total_btc = sum(p["size_btc"] for p in self.positions)
+            total_btc = sum(pos.size_btc for pos in self.positions)  # Use Position objects consistently
             if total_btc > 1e-8:
                 btc_to_sell = total_btc * fraction
                 slippage = self._compute_slippage(btc_to_sell * price, daily_volume)
                 effective_price = price * (1 - slippage)  # Sell price lower due to slippage
                 raw_profit = 0.0
                 
-                # Process each position for selling
-                for p in self.positions[:]:
+                # Process each position for selling - ensure consistency
+                positions_to_remove = []
+                for idx, position in enumerate(self.positions):
                     if btc_to_sell <= 0:
                         break
-                    sell_size = min(p["size_btc"], btc_to_sell)
-                    trade_profit = sell_size * (effective_price - p["entry_price"])
+                        
+                    # Ensure we're working with Position objects
+                    if isinstance(position, dict):
+                        # Convert dict to Position object for consistency
+                        position = Position(
+                            size_btc=position["size_btc"],
+                            entry_price=position["entry_price"],
+                            entry_step=position["entry_step"]
+                        )
+                        self.positions[idx] = position  # Replace dict with Position object
+                        
+                    sell_size = min(position.size_btc, btc_to_sell)
+                    trade_profit = sell_size * (effective_price - position.entry_price)
                     raw_profit += trade_profit
-                    p["size_btc"] -= sell_size
+                    position.size_btc -= sell_size
                     btc_to_sell -= sell_size
                     
                     # If position fully closed, record it
-                    if p["size_btc"] <= 1e-8:
-                        hold_time = self.current_step - p["entry_step"]
-                        self.positions.remove(p)
-                        percentage_gain = (effective_price / p["entry_price"] - 1) * 100
-                        self.closed_trades.append((trade_profit, percentage_gain, hold_time))
+                    if position.size_btc <= 1e-8:
+                        hold_time = self.current_step - position.entry_step
+                        percentage_gain = (effective_price / position.entry_price - 1) * 100
+                        
+                        # Create Trade object consistently
+                        trade = Trade(trade_profit, percentage_gain, hold_time, position.entry_step)
+                        self.closed_trades.append(trade)
+                        
                         if trade_profit > 0:
                             self.profits.append(trade_profit)
                         else:
                             self.losses.append(abs(trade_profit))
+                            
+                        positions_to_remove.append(idx)
+                
+                # Remove fully closed positions
+                for idx in sorted(positions_to_remove, reverse=True):
+                    self.positions.pop(idx)
                 
                 # Calculate fees and final profit
                 notional = (total_btc * fraction - btc_to_sell) * effective_price
@@ -1696,6 +1905,27 @@ class BaseTradingEnv(TradingEnvInterface):
                 net_profit = raw_profit - fee
                 self.capital += net_profit
                 self.returns.append(net_profit / self.initial_capital)
+                
+                # Update action log with success
+                action_entry["executed"] = True
+                action_entry["btc_sold"] = total_btc * fraction - btc_to_sell
+                action_entry["effective_price"] = effective_price
+                action_entry["net_profit"] = net_profit
+                
+                log(f"[ACTION] Sell executed - {total_btc * fraction - btc_to_sell:.6f} BTC @ ${effective_price:.2f}, profit: ${net_profit:.2f}", "debug")
+        else:
+            # Action too small or no positions to sell
+            if direction < -0.1 and not self.positions:
+                self.failed_actions.append({
+                    "step": self.current_step,
+                    "reason": "No positions to sell",
+                    "direction": direction,
+                    "fraction": fraction
+                })
+            else:
+                # Action magnitude too small (between -0.1 and 0.1)
+                action_entry["executed"] = False
+                action_entry["reason"] = "Action magnitude too small (hold)"
 
     def _update_positions(self, current_price):
         """
@@ -1757,13 +1987,12 @@ class BaseTradingEnv(TradingEnvInterface):
             
     def _calculate_reward(self):
         """
-        Calculate the reward for the current step.
+        Calculate the reward for the current step with grace period and performance tracking.
         
         Returns:
             float: Calculated reward value
         """
         # Calculate base reward (profit/loss in this step)
-        # For simplicity, we'll just return 0 reward if there were no closed trades in this step
         if not hasattr(self, 'last_closed_trades_count'):
             self.last_closed_trades_count = 0
             
@@ -1771,37 +2000,44 @@ class BaseTradingEnv(TradingEnvInterface):
         new_trades_count = len(self.closed_trades) - self.last_closed_trades_count
         
         if new_trades_count <= 0:
-            # No new trades closed, no immediate reward
-            return 0.0
+            # No new trades closed, apply grace period penalty if applicable
+            base_reward = 0.0
+            adjusted_reward = self._apply_grace_period_penalty(base_reward)
+            return adjusted_reward
             
-        # Get profits from newly closed trades
-        base_reward = sum([profit for profit, _, _ in self.closed_trades[-new_trades_count:]])
+        # Get profits from newly closed trades  
+        base_reward = sum([trade.profit for trade in self.closed_trades[-new_trades_count:]])
         
         # Update the count of processed trades
         self.last_closed_trades_count = len(self.closed_trades)
+        
+        # Apply grace period considerations first
+        adjusted_reward = self._apply_grace_period_penalty(base_reward)
         
         # If we have a reward system, use it for more sophisticated reward calculation
         if hasattr(self, 'reward_system'):
             # Calculate episode days (assuming 288 5-min bars per day)
             episode_days = (self.current_step - self.window_size) / 288.0
             
-            # Get risk metrics
+            # Get cached risk metrics for performance
             risk_metrics = self._calculate_portfolio_risk()
             
-            # Use the reward system to calculate the reward (new predictive system handles prediction metrics separately)
-            return self.reward_system.compute_reward(
-                base_reward,
+            # Use the reward system to calculate the reward
+            enhanced_reward = self.reward_system.compute_reward(
+                adjusted_reward,  # Use grace period adjusted reward as base
                 self.profits,
                 self.losses,
                 self.returns,
                 self.closed_trades,
                 episode_days,
                 risk_metrics,
-                {}  # Empty prediction metrics - handled by new predictive agent system
+                {}  # Empty prediction metrics - handled by predictive agent system
             )
+            
+            return enhanced_reward
         
-        # If no reward system, just return the base reward
-        return base_reward
+        # If no reward system, return the grace period adjusted reward
+        return adjusted_reward
 
 
 class VecEnvWrapper:
