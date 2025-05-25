@@ -252,15 +252,18 @@ def make_vec_env(df, config, num_envs, device="cpu"):
     Returns:
         Vectorized environment
     """
-    # Define prediction horizons
+    # Define prediction horizons (store in config for environment access)
     prediction_horizons = {
         "short": config.get("SHORT_HORIZON", 60),
         "medium": config.get("MEDIUM_HORIZON", 240),
         "long": config.get("LONG_HORIZON", 720)
     }
     
-    # Create environment creator function
-    env_creator = make_env_creator(df, config, prediction_horizons)
+    # Store horizons in config for environment to access
+    config["PREDICTION_HORIZONS"] = prediction_horizons
+    
+    # Create environment creator function with correct signature
+    env_creator = make_env_creator(df, config, device)
     
     # Create vectorized environment
     if SUBPROC_VEC_ENV_AVAILABLE and num_envs > 1:
@@ -1093,10 +1096,40 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
         # Check the observation space after creation
         obs_space = envs.observation_space
         _log(f"[INFO] Environment observation space: {obs_space}")
+        
+        # CRITICAL FIX: Resolve dimension mismatch between agent and environment
         if obs_space.shape[0] != input_dim:
-             _log(f"[WARNING] Observation space dimension ({obs_space.shape[0]}) does not match calculated input dimension ({input_dim}). Check environment features.")
-             # Potentially update input_dim based on env if discrepancy is found
-             # input_dim = obs_space.shape[0] # Uncomment carefully
+            _log(f"[WARNING] Observation space dimension ({obs_space.shape[0]}) does not match calculated input dimension ({input_dim})")
+            
+            # Validate which dimension is correct by checking environment features
+            env_feature_count = len(config.get("feature_columns", []))
+            
+            if env_feature_count > 0 and obs_space.shape[0] == env_feature_count:
+                # Environment dimension is correct, update input_dim
+                _log(f"[INFO] Using environment observation dimension ({obs_space.shape[0]}) as correct input_dim")
+                input_dim = obs_space.shape[0]
+                config["input_dim"] = input_dim
+            elif env_feature_count > 0 and input_dim == env_feature_count:
+                # Calculated input_dim is correct, need to fix environment
+                _log(f"[ERROR] Environment observation space is incorrect. Expected {input_dim}, got {obs_space.shape[0]}")
+                if error_handler_available:
+                    handle_error(
+                        ValueError(f"Environment observation space mismatch: expected {input_dim}, got {obs_space.shape[0]}"),
+                        "train_model.observation_space_mismatch",
+                        additional_context={"expected_dim": input_dim, "actual_dim": obs_space.shape[0]}
+                    )
+                return None, None, 0, 0
+            else:
+                # Use environment dimension as fallback and update feature tracking
+                _log(f"[INFO] Adjusting to environment observation dimension ({obs_space.shape[0]})")
+                input_dim = obs_space.shape[0]
+                config["input_dim"] = input_dim
+                # Update feature columns to match actual observation space
+                if len(config.get("feature_columns", [])) != input_dim:
+                    _log("[WARNING] Feature columns list doesn't match observation space. Using environment dimension.")
+        else:
+            _log(f"[INFO] Input dimension validation passed: {input_dim}")
+            
     except Exception as e:
         error_msg = f"Error creating environments: {str(e)}"
         _log(f"[ERROR] {error_msg}")
@@ -1132,6 +1165,41 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
             # Use default model type
             model_type = "actor_critic"
             _log(f"[INFO] Using default model type: {model_type}")
+        
+        # CRITICAL FIX: Validate bucket compatibility between agent and environment
+        agent_bucket = config.get("BUCKET", "Scalping")
+        env_bucket = config.get("trading_mode", agent_bucket)  # Environment uses trading_mode
+        
+        if agent_bucket != env_bucket:
+            _log(f"[WARNING] Agent bucket ({agent_bucket}) doesn't match environment bucket ({env_bucket})")
+            # Standardize to agent bucket preference
+            config["trading_mode"] = agent_bucket
+            _log(f"[INFO] Synchronized environment to use agent bucket: {agent_bucket}")
+        
+        # Validate bucket-specific configuration requirements
+        bucket_requirements = {
+            "Scalping": {"min_window_size": 30, "max_horizon": 72, "risk_level": "aggressive"},
+            "Short": {"min_window_size": 60, "max_horizon": 144, "risk_level": "moderate"},
+            "Medium": {"min_window_size": 144, "max_horizon": 288, "risk_level": "moderate"},
+            "Long": {"min_window_size": 288, "max_horizon": 576, "risk_level": "conservative"}
+        }
+        
+        bucket_req = bucket_requirements.get(agent_bucket, {})
+        if bucket_req:
+            # Validate window size
+            current_window = config.get("WINDOW_SIZE", config.get("window_size", 60))
+            min_window = bucket_req.get("min_window_size", 60)
+            if current_window < min_window:
+                _log(f"[WARNING] Window size ({current_window}) too small for {agent_bucket} bucket. Adjusting to {min_window}")
+                config["WINDOW_SIZE"] = min_window
+                config["window_size"] = min_window
+            
+            # Set appropriate risk level if not specified
+            if "risk_level" not in config:
+                config["risk_level"] = bucket_req["risk_level"]
+                _log(f"[INFO] Set risk level to {bucket_req['risk_level']} for {agent_bucket} bucket")
+        
+        _log(f"[INFO] Bucket compatibility validation completed for: {agent_bucket}")
         
         # Create population with error catching
         population = ESPopulation(
