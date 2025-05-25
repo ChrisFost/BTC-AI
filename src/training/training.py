@@ -1718,6 +1718,120 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                     
                     # ===== END ENHANCED PREDICTIVE EVALUATION =====
                     
+                    # ===== DYNAMIC CONFIDENCE THRESHOLD LEARNING =====
+                    # Initialize or update dynamic confidence threshold based on prediction performance
+                    
+                    # Define initial confidence thresholds by bucket type
+                    initial_confidence_thresholds = {
+                        "Scalping": 0.7,   # High confidence needed for rapid trades
+                        "Short": 0.75,     # Higher confidence for short-term positions  
+                        "Medium": 0.8,     # Higher confidence for medium-term positions
+                        "Long": 0.82       # Highest confidence for long-term positions
+                    }
+                    
+                    # Get current dynamic threshold or initialize with bucket default
+                    current_threshold = initial_confidence_thresholds.get(bucket_type, 0.7)
+                    
+                    # Try to load existing dynamic threshold from previous episodes
+                    try:
+                        threshold_file = os.path.join(predictive_agent_dir, f"{bucket_type.lower()}_confidence_threshold.json")
+                        if os.path.exists(threshold_file):
+                            with open(threshold_file, 'r') as f:
+                                threshold_data = json.load(f)
+                                current_threshold = threshold_data.get("current_threshold", current_threshold)
+                                prediction_history = threshold_data.get("prediction_history", [])
+                        else:
+                            prediction_history = []
+                    except Exception as e:
+                        _log(f"[PREDICTIVE] Could not load confidence threshold history: {str(e)}")
+                        prediction_history = []
+                    
+                    # Calculate prediction accuracy for this episode
+                    episode_confidence = predictive_metrics.get("confidence", 0.5)
+                    episode_accuracy = predictive_metrics.get("prediction_accuracy", 0.0)
+                    episode_eval_score = predictive_metrics.get("evaluation_score", 0.0)
+                    
+                    # Add this episode's results to history
+                    prediction_history.append({
+                        "episode": episode + 1,
+                        "confidence": episode_confidence,
+                        "accuracy": episode_accuracy,
+                        "evaluation_score": episode_eval_score,
+                        "threshold_used": current_threshold,
+                        "performance_above_threshold": episode_confidence >= current_threshold
+                    })
+                    
+                    # Keep only recent history (last 50 episodes)
+                    prediction_history = prediction_history[-50:]
+                    
+                    # Update dynamic threshold based on performance history
+                    if len(prediction_history) >= 5:  # Need at least 5 episodes of data
+                        # Calculate success rate at current threshold
+                        above_threshold_episodes = [h for h in prediction_history if h["performance_above_threshold"]]
+                        if above_threshold_episodes:
+                            avg_accuracy_above_threshold = np.mean([h["accuracy"] for h in above_threshold_episodes])
+                            avg_eval_score_above_threshold = np.mean([h["evaluation_score"] for h in above_threshold_episodes])
+                            
+                            # Calculate overall performance metrics
+                            recent_episodes = prediction_history[-10:]  # Last 10 episodes
+                            recent_avg_accuracy = np.mean([h["accuracy"] for h in recent_episodes])
+                            recent_avg_eval_score = np.mean([h["evaluation_score"] for h in recent_episodes])
+                            
+                            # Adjust threshold based on performance
+                            target_accuracy = 0.7  # Target 70% accuracy
+                            target_eval_score = 0.6  # Target evaluation score
+                            
+                            threshold_adjustment = 0.0
+                            
+                            # If we're consistently performing well above threshold, we can lower it slightly
+                            if (avg_accuracy_above_threshold > target_accuracy + 0.1 and 
+                                avg_eval_score_above_threshold > target_eval_score + 0.1 and
+                                len(above_threshold_episodes) >= 3):
+                                threshold_adjustment = -0.02  # Lower threshold by 2%
+                                _log(f"[PREDICTIVE] High performance detected, lowering confidence threshold")
+                            
+                            # If we're underperforming, raise the threshold
+                            elif (recent_avg_accuracy < target_accuracy - 0.05 or 
+                                  recent_avg_eval_score < target_eval_score - 0.05):
+                                threshold_adjustment = 0.03  # Raise threshold by 3%
+                                _log(f"[PREDICTIVE] Low performance detected, raising confidence threshold")
+                            
+                            # Apply threshold adjustment with bounds
+                            new_threshold = current_threshold + threshold_adjustment
+                            
+                            # Keep threshold within reasonable bounds per bucket
+                            min_threshold = initial_confidence_thresholds[bucket_type] - 0.15  # Allow 15% below initial
+                            max_threshold = initial_confidence_thresholds[bucket_type] + 0.15  # Allow 15% above initial
+                            new_threshold = max(min_threshold, min(max_threshold, new_threshold))
+                            
+                            # Only update if change is significant
+                            if abs(new_threshold - current_threshold) > 0.01:
+                                current_threshold = new_threshold
+                                _log(f"[PREDICTIVE] Updated dynamic confidence threshold for {bucket_type}: {current_threshold:.3f}")
+                    
+                    # Save updated threshold and history
+                    try:
+                        threshold_data = {
+                            "bucket_type": bucket_type,
+                            "current_threshold": current_threshold,
+                            "initial_threshold": initial_confidence_thresholds[bucket_type],
+                            "last_updated_episode": episode + 1,
+                            "prediction_history": prediction_history,
+                            "performance_summary": {
+                                "recent_avg_accuracy": np.mean([h["accuracy"] for h in prediction_history[-10:]]) if len(prediction_history) >= 10 else 0.0,
+                                "recent_avg_eval_score": np.mean([h["evaluation_score"] for h in prediction_history[-10:]]) if len(prediction_history) >= 10 else 0.0,
+                                "threshold_adjustment_count": len([h for h in prediction_history if h["threshold_used"] != initial_confidence_thresholds[bucket_type]])
+                            }
+                        }
+                        
+                        with open(threshold_file, 'w') as f:
+                            json.dump(threshold_data, f, indent=2)
+                        _log(f"[PREDICTIVE] Saved dynamic confidence threshold data")
+                    except Exception as e:
+                        _log(f"[WARNING] Could not save confidence threshold data: {str(e)}")
+                    
+                    # ===== END DYNAMIC CONFIDENCE THRESHOLD LEARNING =====
+                    
                     # Generate predictions for the main agents to use
                     if len(predictive_rewards) > 0:
                         # Store predictions in the bucket's predictive agent directory
@@ -1728,6 +1842,7 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                             "timestamp": time.time(),
                             "predicted_performance": np.mean(predictive_rewards),
                             "prediction_confidence": predictive_metrics.get("confidence", 0.5),
+                            "dynamic_confidence_threshold": current_threshold,  # Add dynamic threshold
                             "market_sentiment": predictive_metrics.get("market_sentiment", "neutral"),
                             "horizons": horizons,
                             "enhanced_evaluation_score": predictive_metrics.get("evaluation_score", 0.0),
@@ -1735,6 +1850,7 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                             "recommendations": {
                                 "suggested_action": "hold" if np.mean(predictive_rewards) > 0 else "caution",
                                 "confidence_level": predictive_metrics.get("confidence", 0.5),
+                                "min_confidence_threshold": current_threshold,  # Also add to recommendations
                                 "prediction_accuracy": predictive_metrics.get("prediction_accuracy", 0.0),
                                 "horizon_appropriateness": predictive_metrics.get("evaluation_score", 0.0)
                             }

@@ -377,10 +377,11 @@ class BaseRiskManager(ABC):
         
         # Adjust based on model confidence (if provided)
         if confidence is not None:
-            # Minimum confidence threshold from config
-            min_confidence = self.config.get("MIN_CONFIDENCE_THRESHOLD", 0.4)
+            # Get minimum confidence threshold - this will be dynamically provided by the predictive agent
+            # Fall back to config or reasonable default if no dynamic threshold available
+            min_confidence = self.config.get("MIN_CONFIDENCE_THRESHOLD", 0.6)
             
-            # Scale the position size linearly based on confidence
+            # Scale the position size based on confidence levels
             # At min_confidence, factor = 0.4, at confidence=1.0, factor = 1.0
             if confidence < min_confidence:
                 # Confidence below minimum threshold, reduce to 20% of base size
@@ -392,7 +393,7 @@ class BaseRiskManager(ABC):
             
             # Log confidence-based adjustment
             if confidence_factor < 0.7:
-                log(f"Low prediction confidence ({confidence:.2f}). Adjusted by factor: {confidence_factor:.2f}")
+                log(f"Low prediction confidence ({confidence:.2f} < {min_confidence:.2f}). Adjusted by factor: {confidence_factor:.2f}")
         
         # Adjust based on trend strength (if provided)
         if trend_strength is not None:
@@ -532,6 +533,118 @@ class BaseRiskManager(ABC):
         adjusted_metrics["trend_strength"] = trend_strength if trend_strength is not None else 0.0
         
         return adjusted_metrics
+
+    def get_bucket_horizon_weights(self):
+        """
+        Get horizon preference weights for this specific bucket type.
+        
+        Returns:
+            dict: Mapping of horizon names to weight values (higher = more important)
+        """
+        # Define bucket-specific horizon preferences based on trading strategy
+        if isinstance(self, ScalpingRiskManager):
+            # Scalping focuses on very short-term predictions
+            return {
+                "h6": 1.0,      # 30 minutes - highest priority
+                "h12": 0.9,     # 1 hour
+                "h24": 0.8,     # 2 hours  
+                "h36": 0.6,     # 3 hours
+                "h72": 0.4,     # 6 hours
+                "h144": 0.2,    # 12 hours - lower priority
+                "h288": 0.1,    # 1 day - very low priority
+            }
+        elif isinstance(self, ShortRiskManager):
+            # Short-term focuses on hours to days
+            return {
+                "h6": 0.2,      # 30 minutes - lower priority
+                "h12": 0.3,     # 1 hour
+                "h24": 0.5,     # 2 hours
+                "h72": 0.7,     # 6 hours
+                "h144": 1.0,    # 12 hours - highest priority
+                "h288": 0.9,    # 1 day
+                "h576": 0.8,    # 2 days
+                "h1440": 0.4,   # 5 days - lower priority
+            }
+        elif isinstance(self, MediumRiskManager):
+            # Medium-term focuses on days to weeks
+            return {
+                "h72": 0.2,     # 6 hours - lower priority
+                "h144": 0.3,    # 12 hours
+                "h288": 0.5,    # 1 day
+                "h576": 0.7,    # 2 days
+                "h1440": 1.0,   # 5 days - highest priority
+                "h2880": 0.9,   # 10 days
+                "h4320": 0.8,   # 15 days
+                "h8640": 0.4,   # 1 month - lower priority
+            }
+        elif isinstance(self, LongRiskManager):
+            # Long-term focuses on weeks to months
+            return {
+                "h1440": 0.3,   # 5 days - lower priority
+                "h2880": 0.4,   # 10 days
+                "h4320": 0.6,   # 15 days
+                "h8640": 1.0,   # 1 month - highest priority
+                "h17280": 0.9,  # 2 months
+                "h25920": 0.8,  # 3 months
+                "h51840": 0.6,  # 6 months - moderate priority
+            }
+        else:
+            # Default equal weighting for unknown risk manager types
+            return {}
+
+    def calculate_horizon_weighted_confidence(self, predictions_data):
+        """
+        Calculate confidence score weighted by bucket-appropriate horizons.
+        
+        Args:
+            predictions_data (dict): Raw predictions data from predictive agent
+            
+        Returns:
+            float: Horizon-weighted confidence score (0.0 to 1.0)
+        """
+        if not predictions_data:
+            return 0.5  # Default neutral confidence
+        
+        # Get horizon weights for this bucket
+        horizon_weights = self.get_bucket_horizon_weights()
+        
+        if not horizon_weights:
+            # No specific horizon preferences, use overall confidence
+            return predictions_data.get("prediction_confidence", 0.5)
+        
+        # Extract horizon-specific data if available
+        recommendations = predictions_data.get("recommendations", {})
+        
+        # Try to get horizon-specific confidence values
+        weighted_confidence = 0.0
+        total_weight = 0.0
+        
+        # Check for horizon-specific confidence in the predictions
+        for horizon_name, weight in horizon_weights.items():
+            # Look for horizon-specific confidence (if available in future versions)
+            horizon_confidence = recommendations.get(f"{horizon_name}_confidence", None)
+            
+            if horizon_confidence is not None:
+                weighted_confidence += float(horizon_confidence) * weight
+                total_weight += weight
+        
+        # If no horizon-specific data available, use the bucket weight distribution
+        # to adjust the overall confidence based on how well it matches our preferences
+        if total_weight == 0.0:
+            base_confidence = predictions_data.get("prediction_confidence", 0.5)
+            
+            # Use horizon appropriateness score if available
+            horizon_appropriateness = recommendations.get("horizon_appropriateness", 0.5)
+            
+            # Weighted confidence considers both base confidence and how appropriate
+            # the horizons are for this bucket type
+            weighted_confidence = base_confidence * 0.7 + horizon_appropriateness * 0.3
+        else:
+            # Normalize by total weight
+            weighted_confidence = weighted_confidence / total_weight
+        
+        # Ensure the result is within valid bounds
+        return max(0.0, min(1.0, weighted_confidence))
 
 # Define RiskManager as an alias for BaseRiskManager to fix import issues
 RiskManager = BaseRiskManager

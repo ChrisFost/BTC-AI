@@ -146,6 +146,7 @@ except ImportError as e:
             # Load saved data on initialization
             self.cached_predictions = self._load_cached_predictions()
             self.cached_summary = self._load_cached_summary()
+            self.dynamic_confidence_threshold = self._load_dynamic_confidence_threshold()
             self.agent_available = self._check_agent_availability()
             
             # Fallback defaults based on bucket type
@@ -182,6 +183,31 @@ except ImportError as e:
             except Exception as e:
                 log(f"[FALLBACK] Could not load cached summary: {str(e)}", "warning")
             return None
+        
+        def _load_dynamic_confidence_threshold(self):
+            """Load dynamic confidence threshold from saved threshold file."""
+            try:
+                threshold_file = os.path.join(self.predictive_agent_dir, f"{self.bucket_type.lower()}_confidence_threshold.json")
+                if os.path.exists(threshold_file):
+                    with open(threshold_file, 'r') as f:
+                        threshold_data = json.load(f)
+                    current_threshold = threshold_data.get("current_threshold", None)
+                    if current_threshold is not None:
+                        log(f"[FALLBACK] Loaded dynamic confidence threshold for {self.bucket_type}: {current_threshold:.3f}", "info")
+                        return current_threshold
+            except Exception as e:
+                log(f"[FALLBACK] Could not load dynamic confidence threshold: {str(e)}", "warning")
+            
+            # Fall back to bucket-specific defaults
+            bucket_defaults = {
+                "Scalping": 0.7,
+                "Short": 0.75, 
+                "Medium": 0.8,
+                "Long": 0.82
+            }
+            default_threshold = bucket_defaults.get(self.bucket_type, 0.7)
+            log(f"[FALLBACK] Using default confidence threshold for {self.bucket_type}: {default_threshold:.3f}", "info")
+            return default_threshold
         
         def _check_agent_availability(self):
             """Check if agent weights and directory exist."""
@@ -260,6 +286,7 @@ except ImportError as e:
                 "timestamp": time.time(),
                 "predicted_performance": defaults["evaluation_score"],
                 "prediction_confidence": defaults["confidence"],
+                "dynamic_confidence_threshold": self.dynamic_confidence_threshold,  # Add dynamic threshold
                 "prediction_accuracy": defaults["accuracy"],
                 "enhanced_evaluation_score": defaults["evaluation_score"],
                 "market_sentiment": "neutral",
@@ -267,6 +294,7 @@ except ImportError as e:
                 "recommendations": {
                     "suggested_action": "hold",
                     "confidence_level": defaults["confidence"],
+                    "min_confidence_threshold": self.dynamic_confidence_threshold,  # Also add to recommendations
                     "horizon_appropriateness": defaults["evaluation_score"]
                 }
             }
@@ -732,23 +760,50 @@ class BaseTradingEnv(TradingEnvInterface):
         prediction_mean = None
         prediction_std = None
         confidence_score = None
+        dynamic_confidence_threshold = None
         
         if self.predictive_interface and self.predictive_interface.is_predictive_agent_available():
             try:
                 predictions = self.predictive_interface.get_latest_predictions()
                 if predictions:
                     # Extract confidence and prediction uncertainty for risk adjustment
+                    # Use the actual field names from the new predictive system
                     confidence_score = predictions.get("prediction_confidence", None)
-                    # Use prediction quality as uncertainty measure
+                    
+                    # If not available, try from recommendations nested structure
+                    if confidence_score is None:
+                        recommendations = predictions.get("recommendations", {})
+                        confidence_score = recommendations.get("confidence_level", None)
+                    
+                    # Extract dynamic confidence threshold set by the predictive agent
+                    dynamic_confidence_threshold = predictions.get("dynamic_confidence_threshold", None)
+                    if dynamic_confidence_threshold is None:
+                        recommendations = predictions.get("recommendations", {})
+                        dynamic_confidence_threshold = recommendations.get("min_confidence_threshold", None)
+                    
+                    # Use prediction accuracy as uncertainty measure (higher accuracy = lower uncertainty)
                     pred_accuracy = predictions.get("prediction_accuracy", 0.5)
                     prediction_std = max(0.01, 1.0 - pred_accuracy)  # Higher accuracy = lower uncertainty
-                    # Use evaluation score as prediction mean strength
-                    prediction_mean = predictions.get("enhanced_evaluation_score", 0.0)
-            except:
+                    
+                    # Use the actual performance score as prediction mean strength
+                    prediction_mean = predictions.get("predicted_performance", 0.0)
+                    
+                    # Fallback to enhanced evaluation score if predicted_performance not available
+                    if prediction_mean == 0.0:
+                        prediction_mean = predictions.get("enhanced_evaluation_score", 0.0)
+            except Exception as e:
+                # Log the exception but continue with defaults
+                log(f"[WARNING] Error extracting predictive data for risk management: {str(e)}", "warning")
                 pass  # Use defaults if predictive interface fails
         
+        # Pass the dynamic confidence threshold to the risk manager
+        if dynamic_confidence_threshold is not None:
+            # Temporarily update the risk manager's config with the dynamic threshold
+            original_threshold = self.risk_manager.config.get("MIN_CONFIDENCE_THRESHOLD")
+            self.risk_manager.config["MIN_CONFIDENCE_THRESHOLD"] = dynamic_confidence_threshold
+        
         # Get from risk manager with enhanced predictive information
-        return self.risk_manager.calculate_risk_adjusted_size(
+        risk_adjusted_size = self.risk_manager.calculate_risk_adjusted_size(
             price, 
             daily_volume, 
             direction, 
@@ -758,6 +813,15 @@ class BaseTradingEnv(TradingEnvInterface):
             prediction_std=prediction_std,
             confidence_score=confidence_score
         )
+        
+        # Restore original threshold if we modified it
+        if dynamic_confidence_threshold is not None and original_threshold is not None:
+            self.risk_manager.config["MIN_CONFIDENCE_THRESHOLD"] = original_threshold
+        elif dynamic_confidence_threshold is not None and original_threshold is None:
+            # Remove the temporarily added threshold
+            self.risk_manager.config.pop("MIN_CONFIDENCE_THRESHOLD", None)
+        
+        return risk_adjusted_size
     
     def _estimate_market_impact(self, size_btc, price, daily_volume):
         """
