@@ -1527,12 +1527,13 @@ class VecEnvWrapper:
         return [getattr(self.envs[i], method_name)(*args, **kwargs) for i in indices]
 
 
-def create_environment(df=None, config=None):
+def create_environment(df=None, config=None, device="cpu"):
     """Factory function to create the appropriate environment type
     
     Args:
         df (pandas.DataFrame, optional): DataFrame with market data. Can also be passed in config.
         config (dict, optional): Configuration parameters.
+        device (str, optional): Device to run on ('cpu', 'cuda'). Defaults to "cpu".
         
     Returns:
         Environment instance based on configuration.
@@ -1552,6 +1553,9 @@ def create_environment(df=None, config=None):
         "use_tensor": False
     }
     
+    # Store device in config for environment access
+    config["device"] = device
+    
     # If df was passed as first argument, use it
     if df is not None:
         config["df"] = df
@@ -1564,7 +1568,8 @@ def create_environment(df=None, config=None):
     bucket = config.get("trading_mode", "Medium")
     use_tensor = config.get("use_tensor", False)
     
-    if use_tensor:
+    # Use tensor environment if device is CUDA or explicitly requested
+    if use_tensor or (device == "cuda"):
         # Use tensor-optimized environment if requested and available
         try:
             # Import dynamically
@@ -1573,14 +1578,17 @@ def create_environment(df=None, config=None):
             detect_gpu_availablity = env_tensor_module.detect_gpu_availablity
             
             has_gpu = detect_gpu_availablity()
-            if has_gpu:
-                return TensorTradingEnv(df, window_size, initial_capital, max_positions, bucket, config)
+            if has_gpu and device == "cuda":
+                return TensorTradingEnv(df, window_size, initial_capital, max_positions, bucket, config, device=device)
+            elif device == "cuda":
+                log("GPU requested but not available. Falling back to CPU-based environment.", "warning")
+                # Fall through to base environment with CPU
             else:
-                print("GPU not available. Using CPU-based environment.")
+                return TensorTradingEnv(df, window_size, initial_capital, max_positions, bucket, config, device=device)
         except ImportError:
-            print("Tensor environment not available. Using base environment.")
+            log("Tensor environment not available. Using base environment.", "warning")
     
-    # Default to base environment
+    # Default to base environment (CPU-based)
     return BaseTradingEnv(df, window_size, initial_capital, max_positions, bucket, config)
 
 

@@ -640,16 +640,53 @@ def make_env_creator(df, config, device="cpu"):
     Returns:
         callable: Function that creates a new environment instance.
     """
+    # CRITICAL FIX: Validate parameters and add signature compatibility checks
+    if df is None:
+        raise ValueError("DataFrame cannot be None for environment creation")
+    
+    if config is None:
+        config = {}
+    
+    # Validate device parameter
+    valid_devices = ["cpu", "cuda", "auto"]
+    if device not in valid_devices:
+        log(f"Invalid device '{device}'. Using 'cpu' as fallback.", "warning")
+        device = "cpu"
+    
+    # Add environment creation validation
     def _creator():
         try:
-            # Import dynamically
+            # Import dynamically with error handling
             env_base_module = importlib.import_module("src.environment.env_base")
             create_environment = env_base_module.create_environment
-            env = create_environment(df, config, device)
+            
+            # Test if create_environment accepts device parameter
+            import inspect
+            sig = inspect.signature(create_environment)
+            if 'device' in sig.parameters:
+                # New signature with device parameter
+                env = create_environment(df, config, device)
+            else:
+                # Legacy signature without device parameter
+                log("Environment creation function doesn't support device parameter. Using legacy signature.", "warning")
+                env = create_environment(df, config)
+                
+            # Validate created environment
+            if env is None:
+                raise RuntimeError("Environment creation returned None")
+                
+            # Basic environment validation
+            if not hasattr(env, 'reset') or not hasattr(env, 'step'):
+                raise RuntimeError("Created environment missing required methods (reset, step)")
+                
             return env
+            
         except ImportError as e:
+            log(f"Error importing environment module: {e}", level="error")
+            raise RuntimeError(f"Failed to import environment creation function: {e}")
+        except Exception as e:
             log(f"Error creating environment: {e}", level="error")
-            raise
+            raise RuntimeError(f"Environment creation failed: {e}")
     
     return _creator
 
