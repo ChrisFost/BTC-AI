@@ -358,9 +358,9 @@ class BaseRiskManager(ABC):
             if isinstance(self, ScalpingRiskManager):
                 # Scalping requires higher precision
                 max_cv = 0.1
-            elif isinstance(self, ShortTermRiskManager):
+            elif isinstance(self, ShortRiskManager):
                 max_cv = 0.2
-            elif isinstance(self, MediumTermRiskManager):
+            elif isinstance(self, MediumRiskManager):
                 max_cv = 0.3
             else:  # Long term is more tolerant to noise
                 max_cv = 0.4
@@ -774,6 +774,7 @@ class ShortRiskManager(BaseRiskManager):
         self.max_position_percentage = config.get("SHORT_MAX_POSITION_PCT", 0.1)  # 10% max per position
         self.target_profit_factor = config.get("SHORT_PROFIT_FACTOR", 2.0)  # Profit-to-risk ratio
         self.dynamic_stop_factor = config.get("SHORT_DYNAMIC_STOP", 1.5)  # For dynamic stop loss calculation
+        self.max_drawdown_tolerance = config.get("SHORT_MAX_DRAWDOWN", 0.1)  # 10% max drawdown tolerance
     
     def calculate_risk_adjusted_size(self, price, daily_volume, direction, risk_metrics, position_count,
                                    prediction_mean=None, prediction_std=None, confidence_score=None):
