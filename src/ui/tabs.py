@@ -360,19 +360,15 @@ def create_probabilistic_tab(title="Probabilistic"):
                         key="SHOW_UNCERTAINTY_METRICS",
                         tooltip="Display detailed uncertainty metrics")]
         ])],
-        [sg.Frame("Real-Time Inference", [
-            [sg.Text("Data Source:"), 
-             sg.Combo(["ccxt", "binance", "coinbase", "file"], 
-                     default_value=config.get("MARKET_DATA_SOURCE", "ccxt"), 
-                     key="MARKET_DATA_SOURCE", size=(10,1))],
-            [sg.Text("Symbol:"), 
-             sg.InputText(config.get("SYMBOL", "BTC/USDT"), key="SYMBOL", size=(10,1))],
-            [sg.Text("Interval:"), 
-             sg.Combo(["1m", "5m", "15m", "1h", "4h", "1d"], 
-                     default_value=config.get("INTERVAL", "5m"), 
-                     key="INTERVAL", size=(5,1))],
-            [sg.Button("Start Inference", key="START_INFERENCE"), 
-             sg.Button("Stop Inference", key="STOP_INFERENCE", disabled=True)]
+        [sg.Frame("Live Prediction Interface", [
+            [sg.Text("Live Prediction Dashboard", font=("Helvetica", 14, "bold"))],
+            [sg.Text("Monitor real-time model predictions and confidence levels")],
+            [sg.HorizontalSeparator()],
+            [sg.Text("Prediction Status:"), sg.Text("Disabled", key="PREDICTION_STATUS", text_color="red")],
+            [sg.Text("Last Prediction:"), sg.Text("N/A", key="LAST_PREDICTION")],
+            [sg.Text("Confidence Level:"), sg.Text("N/A", key="PREDICTION_CONFIDENCE")],
+            [sg.HorizontalSeparator()],
+            [sg.Text("Note: Predictive agent runs automatically with main training", font=("Helvetica", 10, "italic"))]
         ])]
     ]
     

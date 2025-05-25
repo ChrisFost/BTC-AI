@@ -1808,6 +1808,20 @@ def train_model(df, config=None, save_path=None, recovery_state=None, progress_c
                     
                     _log(f"[PREDICTIVE] Predictive agent training completed for episode {episode + 1}")
                     
+                    # ===== SIMPLE PREDICTIVE AGENT STATUS LOG =====
+                    # Add basic "at a glance" predictive agent info to live log
+                    if len(predictive_rewards) > 0:
+                        pred_performance = np.mean(predictive_rewards)
+                        pred_confidence = predictive_metrics.get("confidence", 0.5)
+                        eval_score = predictive_metrics.get("evaluation_score", 0.0)
+                        
+                        # Simple status indicator
+                        status = "📈 Helping" if pred_performance > 0 and eval_score > 0.5 else "⚠️  Learning" if pred_performance > -0.5 else "📉 Struggling"
+                        
+                        # Basic one-line summary for UI
+                        _log(f"[PREDICTIVE-STATUS] {status} | Performance: {pred_performance:.3f} | Confidence: {pred_confidence:.2f} | Score: {eval_score:.2f}")
+                    # ===== END SIMPLE PREDICTIVE AGENT STATUS LOG =====
+                    
                 except Exception as pred_e:
                     _log(f"[WARNING] Error training predictive agent: {str(pred_e)}")
                     if error_handler_available:
